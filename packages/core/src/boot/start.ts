@@ -7,8 +7,9 @@ import {
   type MigrationOwner,
 } from '@frontrangesystems/business-os-db';
 import { sql as sqlOp } from 'drizzle-orm';
+import { pino } from 'pino';
 import { buildApp, type AppDeps } from '../app.js';
-import { registerModuleRoutes } from '../modules.js';
+import { registerModuleRoutes, registerModuleBackgroundWorkers } from '../modules.js';
 import { createSecretsStore, loadSecretsKey } from '../secrets/index.js';
 import { parseEnv, type FrameworkEnv } from './env.js';
 import type {
@@ -150,8 +151,36 @@ export async function startServer(opts: StartServerOpts): Promise<StartedServer>
   const trigger = opts.triggerFactory?.({
     startScheduler: mode === 'worker' || mode === 'both',
   });
-  if (trigger?.start && (mode === 'worker' || mode === 'both')) {
+  // Start the trigger in EVERY mode. The trigger was handed `startScheduler`
+  // and decides what to bring up: worker/both start the scheduler + full jobs
+  // (consumers running); api-only connects the jobs backend enqueue-only so
+  // module routes can enqueue background work without running consumers. A
+  // trigger that doesn't need an api-mode connection can simply no-op when
+  // startScheduler is false (older triggers did, and still work).
+  if (trigger?.start) {
     trigger.start();
+  }
+
+  // Worker (and dev `both`) process: attach every module's background workers
+  // to the jobs backend. They run as `module:<slug>:<name>` jobs triggered by
+  // the module's own ctx.enqueue — never as agents (no registry entry, no
+  // Agents-list row, no enable bit). No-op if the trigger doesn't expose a
+  // jobs backend (subscribeJob). In api-only mode we skip this entirely so the
+  // API process never runs consumers (it only enqueues).
+  if ((mode === 'worker' || mode === 'both') && trigger) {
+    const workerLogger = pino({ level: env.LOG_LEVEL }).child({
+      client_slug: env.CLIENT_SLUG,
+    });
+    try {
+      await registerModuleBackgroundWorkers({
+        db,
+        inventory: opts.inventory,
+        trigger,
+        logger: workerLogger,
+      });
+    } catch (err) {
+      workerLogger.warn({ err }, 'module background worker registration failed');
+    }
   }
 
   // API process

@@ -35,8 +35,22 @@ export interface JobsBackend {
     name: string,
     handler: (payload: unknown) => Promise<void>,
   ): Promise<void>;
-  /** Start consumers — agent-routing + custom subscribers. Idempotent. */
-  start(): Promise<void>;
+  /**
+   * Connect pg-boss and (by default) register consumers.
+   *
+   *   - `start()` / `start({ withWorkers: true })` — full behavior: connect +
+   *     register agent-routing workers + custom subscribers + begin processing.
+   *     Use in the worker (and `both`) process.
+   *   - `start({ withWorkers: false })` — connect ONLY (enqueue-only). pg-boss
+   *     requires `.start()` before `.send()`, so the API process calls this so
+   *     `enqueue` works without registering any consumers. No agent/custom
+   *     handlers run in this process.
+   *
+   * Idempotent: once started in either form, repeat calls are no-ops. A later
+   * `subscribe()` after a `withWorkers: false` start does NOT begin consuming
+   * (the process opted out of workers); it's recorded for a future full start.
+   */
+  start(opts?: { withWorkers?: boolean }): Promise<void>;
   /** Stop consumers and close the pg-boss connection. */
   stop(): Promise<void>;
 }
@@ -60,10 +74,45 @@ export function createJobsBackend(deps: JobsDeps): JobsBackend {
   // Custom (non-agent) handlers registered by the client shell.
   const customHandlers = new Map<string, (payload: unknown) => Promise<void>>();
   let started = false;
+  // True once consumers (agent-routing + custom subscribers) are registered.
+  // An enqueue-only start connects pg-boss but leaves this false.
+  let workersRegistered = false;
+
+  async function registerAllWorkers(): Promise<void> {
+    // Register agent-routing worker for every agent slug in the registry.
+    for (const agent of deps.registry.listAgents()) {
+      const slug = agent.manifest.slug;
+      await boss.work<unknown>(slug, async (jobs) => {
+        for (const job of jobs) {
+          await runAgent(
+            {
+              db: deps.db,
+              registry: deps.registry,
+              connectors: deps.connectors,
+              logger: deps.logger,
+            },
+            slug,
+            job.data,
+            { kind: 'event', detail: `job:${slug}` },
+          );
+        }
+      });
+    }
+    for (const [name, handler] of customHandlers) {
+      await registerCustomHandler(boss, name, handler);
+    }
+    workersRegistered = true;
+    deps.logger.info(
+      { customHandlers: customHandlers.size, agentWorkers: deps.registry.listAgents().length },
+      'jobs.started',
+    );
+  }
 
   return {
     async enqueue(name, payload, opts): Promise<string> {
-      if (!started) await this.start();
+      // Auto-connect enqueue-only if nobody started us yet — never implicitly
+      // register workers from inside an enqueue.
+      if (!started) await this.start({ withWorkers: false });
       const sendOpts: PgBoss.SendOptions = {};
       if (opts?.delayMs && opts.delayMs > 0) {
         sendOpts.startAfter = Math.ceil(opts.delayMs / 1000);
@@ -85,50 +134,31 @@ export function createJobsBackend(deps: JobsDeps): JobsBackend {
 
     async subscribe(name, handler): Promise<void> {
       customHandlers.set(name, handler);
-      if (started) {
-        // Late subscription — register immediately.
+      if (workersRegistered) {
+        // Late subscription on a worker process — register immediately.
         await registerCustomHandler(boss, name, handler);
       }
     },
 
-    async start(): Promise<void> {
-      if (started) return;
+    async start(opts): Promise<void> {
+      const withWorkers = opts?.withWorkers ?? true;
+      if (started) {
+        // Already connected. If a prior enqueue-only start brought us up and a
+        // caller now wants full workers, register them on top of the live
+        // connection. (The reverse — downgrading to enqueue-only — is a no-op.)
+        if (withWorkers && !workersRegistered) await registerAllWorkers();
+        return;
+      }
       await boss.start();
       started = true;
-
-      // Register agent-routing worker for every agent slug in the registry.
-      for (const agent of deps.registry.listAgents()) {
-        const slug = agent.manifest.slug;
-        await boss.work<unknown>(slug, async (jobs) => {
-          for (const job of jobs) {
-            await runAgent(
-              {
-                db: deps.db,
-                registry: deps.registry,
-                connectors: deps.connectors,
-                logger: deps.logger,
-              },
-              slug,
-              job.data,
-              { kind: 'event', detail: `job:${slug}` },
-            );
-          }
-        });
-      }
-
-      for (const [name, handler] of customHandlers) {
-        await registerCustomHandler(boss, name, handler);
-      }
-      deps.logger.info(
-        { customHandlers: customHandlers.size, agentWorkers: deps.registry.listAgents().length },
-        'jobs.started',
-      );
+      if (withWorkers) await registerAllWorkers();
     },
 
     async stop(): Promise<void> {
       if (!started) return;
       await boss.stop({ graceful: true });
       started = false;
+      workersRegistered = false;
     },
   };
 }

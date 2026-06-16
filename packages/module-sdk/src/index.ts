@@ -84,7 +84,43 @@ export interface ModuleServerContext<TSettings = unknown> {
   settings: TSettings;
   /** Module-scoped logger pre-tagged with `module_slug`. */
   logger: ModuleLogger;
+  /**
+   * Enqueue one of this module's own background workers (see
+   * `backgroundWorkers`). The framework routes the job to the matching handler
+   * running in the WORKER process under the name `module:<slug>:<workerName>`,
+   * so it never collides with an agent slug and never runs as an agent.
+   *
+   * Returns once the job is durably enqueued (pg-boss persists it); the handler
+   * runs asynchronously in the worker. Use this from `registerRoutes` to kick
+   * off background work in response to a request (e.g. index a freshly uploaded
+   * document).
+   */
+  enqueue(workerName: string, payload?: unknown): Promise<void>;
 }
+
+/**
+ * Context handed to a module's background-worker handler when it runs in the
+ * worker process. Deliberately minimal and db-free: the SDK stays free of
+ * Drizzle / Postgres types, so a handler builds its own db from
+ * `process.env.DATABASE_URL` exactly like the module's routes do.
+ */
+export interface ModuleWorkerContext<TSettings = unknown> {
+  /** Decrypted, parsed module settings (validated against the manifest schema). */
+  settings: TSettings;
+  /** Module-scoped logger pre-tagged with `module_slug` + the worker name. */
+  logger: ModuleLogger;
+}
+
+/**
+ * A background worker a module owns. Runs in the WORKER process, is triggered
+ * by the module itself via `ctx.enqueue(name, payload)`, and is NOT a
+ * user-facing agent: it never appears in the operator's Agents list, has no
+ * enable bit, and has no schedule.
+ */
+export type ModuleBackgroundWorkerHandler<TSettings = unknown> = (
+  ctx: ModuleWorkerContext<TSettings>,
+  payload: unknown,
+) => Promise<void>;
 
 export interface ModuleLogger {
   trace(obj: object | string, msg?: string): void;
@@ -182,6 +218,14 @@ export interface ModulePackage<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
    * digest run. Optional — modules without digest content can omit.
    */
   digestContribution?: (ctx: DigestContext<z.infer<TSettings>>) => Promise<DigestContribution | null>;
+  /**
+   * Background workers this module owns, keyed by worker name. Each runs in
+   * the WORKER process and is triggered by the module itself via
+   * `ctx.enqueue(name, payload)` — never by the operator. They are NOT agents:
+   * no Agents-list entry, no enable bit, no schedule. The framework registers
+   * each under the job name `module:<slug>:<name>`. Optional.
+   */
+  backgroundWorkers?: Record<string, ModuleBackgroundWorkerHandler<z.infer<TSettings>>>;
 }
 
 /**
