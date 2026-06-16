@@ -106,6 +106,24 @@ export interface ModulePackageLike {
   // `strictFunctionTypes`; methods are bivariant.
   registerRoutes?(app: unknown, ctx: unknown): void | Promise<void>;
   uiPages?: Array<{ path: string; navLabel?: string }>;
+  /**
+   * Background workers the module owns, keyed by worker name. Mirrors
+   * module-sdk's ModulePackage.backgroundWorkers. Each runs in the worker
+   * process and is triggered by the module via ctx.enqueue — NOT an agent, so
+   * it never appears in the Agents list.
+   *
+   * A `Record` value position is invariant, so a concrete module's
+   * `ModuleBackgroundWorkerHandler<TSettings>` (whose `ctx` is the specific
+   * `ModuleWorkerContext<TSettings>`) won't structurally match a handler typed
+   * with `ctx: unknown`. Typing the params as `never` sidesteps that: under
+   * `strictFunctionTypes` a function with `never` params is a supertype of any
+   * handler (params are contravariant; `never` is assignable to every type), so
+   * any concrete module's backgroundWorkers map is assignable here. Core never
+   * calls these through this structural type — it pulls the real handlers off
+   * the concrete module package in start.ts — so the loose param types are
+   * purely for structural compatibility.
+   */
+  backgroundWorkers?: Record<string, (ctx: never, payload: never) => Promise<void>>;
 }
 
 /**
@@ -136,4 +154,20 @@ export interface ManualTriggerer {
    * to take effect.
    */
   refreshAgent?(slug: string): Promise<void>;
+  /**
+   * Enqueue a durable background job by raw job name. The framework uses this
+   * to let module routes kick off their own background workers (job name
+   * `module:<slug>:<workerName>`). The client's trigger wires this to the
+   * jobs backend's enqueue. Optional — when absent, module routes that call
+   * ctx.enqueue throw (no jobs backend wired).
+   */
+  enqueueJob?(name: string, payload: unknown): Promise<void>;
+  /**
+   * Register a consumer for a raw job name. The framework uses this in the
+   * WORKER process to attach each module background worker
+   * (`module:<slug>:<workerName>`). The client's trigger wires this to the
+   * jobs backend's subscribe. Optional — present only on triggers that own a
+   * jobs backend running workers.
+   */
+  subscribeJob?(name: string, handler: (payload: unknown) => Promise<void>): Promise<void>;
 }

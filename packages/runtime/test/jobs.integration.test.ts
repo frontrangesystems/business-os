@@ -126,3 +126,70 @@ d('pg-boss jobs backend (real Postgres)', () => {
     expect(received[0]).toEqual({ ok: true });
   });
 });
+
+/**
+ * Module-owned background worker wiring. Mirrors how core wires modules:
+ *   - the API process connects the jobs backend enqueue-only
+ *     (`start({ withWorkers: false })`) so module routes can enqueue;
+ *   - the worker process subscribes a handler under the module job name
+ *     `module:<slug>:<worker>` and runs full (`start()` / withWorkers: true);
+ *   - enqueueing `module:<slug>:<worker>` routes to that handler and NEVER to
+ *     runAgent (the name isn't an agent slug).
+ */
+d('module background workers (real Postgres)', () => {
+  let env: Awaited<ReturnType<typeof freshDb>>;
+  let registry: Registry;
+  let resolver: ReturnType<typeof createConnectorResolver>;
+  let apiJobs: ReturnType<typeof createJobsBackend>;
+  let workerJobs: ReturnType<typeof createJobsBackend>;
+  const logger = pino({ level: 'silent' });
+
+  beforeAll(async () => {
+    env = await freshDb();
+    registry = new Registry();
+    const secrets = createSecretsStore(env.db, new Uint8Array(randomBytes(32)));
+    resolver = createConnectorResolver({ db: env.db, secrets, registry, logger });
+
+    // The "API process" backend — enqueue-only, no consumers.
+    apiJobs = createJobsBackend({
+      databaseUrl: env.url,
+      db: env.db,
+      registry,
+      connectors: resolver,
+      logger,
+    });
+    await apiJobs.start({ withWorkers: false });
+
+    // The "worker process" backend — full, runs consumers.
+    workerJobs = createJobsBackend({
+      databaseUrl: env.url,
+      db: env.db,
+      registry,
+      connectors: resolver,
+      logger,
+    });
+    await workerJobs.start();
+  });
+
+  afterAll(async () => {
+    await apiJobs.stop();
+    await workerJobs.stop();
+    await env.sql.end({ timeout: 1 });
+  });
+
+  it('enqueue (api, enqueue-only) -> module worker handler runs (worker)', async () => {
+    const received: unknown[] = [];
+    const jobName = 'module:bid-indexer:index';
+    await workerJobs.subscribe(jobName, async (payload) => {
+      received.push(payload);
+    });
+
+    // Enqueue from the enqueue-only backend, exactly as a module route would
+    // via ctx.enqueue.
+    const id = await apiJobs.enqueue(jobName, { bidId: 'abc-123' });
+    expect(id).toBeTruthy();
+
+    await waitFor(() => received.length > 0);
+    expect(received[0]).toEqual({ bidId: 'abc-123' });
+  });
+});
