@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-connector-email-stub",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Dev/demo provider for the email capability — logs sends instead of dispatching.",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { eq, desc, and, gte, lt, type SQL } from 'drizzle-orm';
+import { eq, desc, and, gte, lt, sql, type SQL } from 'drizzle-orm';
 import {
   agentRuns,
   auditLog,
@@ -11,6 +11,23 @@ import {
 import type { Db } from '@frontrangesystems/business-os-db';
 import { requireUser } from './_require-user.js';
 import { zodToFieldSchema } from '../zod-form.js';
+import { AGENT_REFRESH_CHANNEL } from '../agent-refresh.js';
+
+/**
+ * Cross-process live refresh: after persisting an enable/disable/schedule
+ * change in the api process, notify the worker process (which hosts the
+ * scheduler) so it re-reads the agent's state immediately. Best-effort — a
+ * notify failure must never break the request; the change is already
+ * persisted and will take effect on next worker restart regardless.
+ *
+ * Both args to pg_notify are parameterized (it's a function, not the bare
+ * NOTIFY statement, so the channel name binds safely).
+ */
+async function notifyAgentRefresh(db: Db, slug: string): Promise<void> {
+  await db
+    .execute(sql`select pg_notify(${AGENT_REFRESH_CHANNEL}, ${slug})`)
+    .catch(() => {});
+}
 
 /**
  * Admin / operator API.
@@ -452,6 +469,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     await req.audit('admin.agent.enabled', { slug });
     const trigger = req.deps.trigger as { refreshAgent?: (slug: string) => Promise<void> } | undefined;
     if (trigger?.refreshAgent) await trigger.refreshAgent(slug).catch(() => {});
+    await notifyAgentRefresh(req.deps.db, slug);
     return { ok: true };
   });
 
@@ -472,6 +490,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     await req.audit('admin.agent.disabled', { slug });
     const trigger = req.deps.trigger as { refreshAgent?: (slug: string) => Promise<void> } | undefined;
     if (trigger?.refreshAgent) await trigger.refreshAgent(slug).catch(() => {});
+    await notifyAgentRefresh(req.deps.db, slug);
     return { ok: true };
   });
 
@@ -635,6 +654,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         /* refresh is best-effort; the override is persisted regardless */
       });
     }
+    await notifyAgentRefresh(req.deps.db, slug);
     return { ok: true as const, override: next };
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-connector-email-inbox-imap",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Direct IMAP provider for the email-inbox capability.",
   "type": "module",
   "main": "./dist/index.js",
