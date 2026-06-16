@@ -2,9 +2,24 @@ import { Cron } from 'croner';
 import { eq } from 'drizzle-orm';
 import type { Logger } from 'pino';
 import { settings as settingsTable, type Db } from '@frontrangesystems/business-os-db';
+import { AGENT_REFRESH_CHANNEL } from '@frontrangesystems/business-os-core';
 import type { Registry } from './registry.js';
 import type { ConnectorResolver } from './active-connectors.js';
 import { runAgent, type RunTrigger } from './run.js';
+
+/**
+ * Structural view of postgres-js's LISTEN handle. Typed structurally rather
+ * than importing `Sql` from `postgres` so runtime needs no new dependency
+ * (`postgres` is only a transitive dep via db). The real postgres-js client
+ * satisfies this shape; it auto-reconnects and re-issues the LISTEN on
+ * reconnect, so the listener survives transient connection loss.
+ */
+export interface AgentRefreshListener {
+  listen(
+    channel: string,
+    onNotify: (payload: string) => void,
+  ): Promise<{ unlisten(): Promise<void> }>;
+}
 
 type AgentScheduleOverride =
   | { kind: 'manual' }
@@ -61,6 +76,14 @@ export interface SchedulerDeps {
   connectors: ConnectorResolver;
   logger: Logger;
   /**
+   * Raw postgres-js client used only for LISTEN/NOTIFY. When provided, the
+   * scheduler LISTENs on AGENT_REFRESH_CHANNEL and live-refreshes an agent
+   * whenever the api process NOTIFYs (enable/disable/schedule change). When
+   * omitted, the scheduler behaves exactly as before — no listener, changes
+   * take effect on next restart.
+   */
+  sql?: AgentRefreshListener;
+  /**
    * Optional jobs backend. When wired, agents triggered by the scheduler
    * (cron/manual/event) can use ctx.jobs.enqueue. When omitted, enqueue
    * throws — same fallback as runAgent() without a backend.
@@ -75,6 +98,8 @@ export class Scheduler {
   /** topic -> list of agent slugs subscribed via manifest.schedule.kind === 'event' */
   private eventSubs = new Map<string, string[]>();
   private started = false;
+  /** LISTEN handle for cross-process refresh; present only when deps.sql is set. */
+  private refreshListener?: { unlisten(): Promise<void> };
 
   constructor(private deps: SchedulerDeps) {}
 
@@ -87,6 +112,17 @@ export class Scheduler {
     if (this.started) throw new Error('Scheduler already started');
     for (const agent of this.deps.registry.listAgents()) {
       await this.scheduleAgent(agent.manifest.slug);
+    }
+    if (this.deps.sql) {
+      this.refreshListener = await this.deps.sql.listen(AGENT_REFRESH_CHANNEL, (payload) => {
+        this.refreshAgent(payload).catch((err) =>
+          this.deps.logger.error({ err, slug: payload }, 'agent-refresh failed'),
+        );
+      });
+      this.deps.logger.info(
+        { channel: AGENT_REFRESH_CHANNEL },
+        'scheduler listening for agent refresh',
+      );
     }
     this.started = true;
     this.deps.logger.info(
@@ -142,6 +178,10 @@ export class Scheduler {
   }
 
   async stop(): Promise<void> {
+    if (this.refreshListener) {
+      await this.refreshListener.unlisten().catch(() => {});
+      this.refreshListener = undefined;
+    }
     for (const c of this.crons.values()) c.stop();
     this.crons.clear();
     this.eventSubs.clear();
