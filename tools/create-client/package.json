@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-create-client",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Scaffolds a thin per-client Business OS install repo.",
   "type": "module",
   "bin": {

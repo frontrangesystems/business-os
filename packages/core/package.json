@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-core",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Fastify server, auth, audit log, secrets, settings — the framework's runnable spine.",
   "type": "module",
   "main": "./dist/index.js",

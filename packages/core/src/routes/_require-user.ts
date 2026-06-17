@@ -31,6 +31,11 @@ export async function requireUser(
     return;
   }
   req.user = { id: lookup.user.id, email: lookup.user.email, roles: lookup.roles };
+  // Enrich the per-request logger so every line a handler emits downstream
+  // carries user_id (the access line in app.ts also reads req.user directly, so
+  // it's covered even on routes that don't log). req.log is already bound with
+  // client_slug + request_id; this adds the authenticated principal.
+  req.log = req.log.child({ user_id: lookup.user.id });
 }
 
 /**

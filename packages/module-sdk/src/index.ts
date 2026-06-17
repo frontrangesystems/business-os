@@ -82,7 +82,14 @@ export interface ModuleManifest<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
 export interface ModuleServerContext<TSettings = unknown> {
   /** Decrypted, parsed module settings (validated against the manifest schema). */
   settings: TSettings;
-  /** Module-scoped logger pre-tagged with `module_slug`. */
+  /**
+   * Module-scoped logger pre-tagged with `module_slug`, built once at route
+   * registration. Use it for boot/registration lines and anything not tied to a
+   * specific request. For PER-REQUEST logging inside a route handler, prefer the
+   * request logger (`req.log`): the framework binds it with client_slug +
+   * request_id + user_id, so a line like `req.log.info({ bidId }, 'bid.uploaded')`
+   * is fully correlated to the request and the authenticated user.
+   */
   logger: ModuleLogger;
   /**
    * Enqueue one of this module's own background workers (see

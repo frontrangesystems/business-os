@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-connector-composio",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Substrate for Composio-backed connectors — shared client, version pinning, error mapping. Not a connector itself.",
   "type": "module",
   "main": "./dist/index.js",
