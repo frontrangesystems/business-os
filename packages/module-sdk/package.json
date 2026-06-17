@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-module-sdk",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "The interface every Business OS module implements — schema + server routes + optional UI pages.",
   "type": "module",
   "main": "./dist/index.js",

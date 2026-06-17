@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-agents-all",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Aggregator package — re-exports every framework agent so client shells can registerManyAgents() instead of importing each one individually.",
   "type": "module",
   "main": "./dist/index.js",
