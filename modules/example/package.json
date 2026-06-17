@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-module-example",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Example module — minimal notes table, REST routes, UI page. Shape reference for real modules.",
   "type": "module",
   "main": "./dist/server/index.js",
