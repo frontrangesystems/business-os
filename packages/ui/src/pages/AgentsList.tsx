@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
+import { describeSchedule } from '@frontrangesystems/business-os-agent-sdk';
 import { Api, ApiError, type AgentSummary } from '../lib/api';
 import { PageHeader } from '../components/PageHeader';
 import { SchemaForm, defaultFor, type FieldSchema } from '../components/SchemaForm';
@@ -8,10 +9,15 @@ import { AddAgentDialog } from '../components/AddAgentDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToast } from '../lib/toast';
 
-function ScheduleLabel({ s }: { s: AgentSummary['schedule'] }): JSX.Element {
-  if (s.kind === 'cron') return <span className="font-mono text-xs">{s.expr}</span>;
-  if (s.kind === 'event') return <span>event: {s.topic}</span>;
-  return <span className="text-ink-500 dark:text-ink-400">manual</span>;
+function ScheduleLabel({ agent }: { agent: AgentSummary }): JSX.Element {
+  // Prefer the server-rendered friendly label (reflects operator overrides and
+  // never shows a raw cron expression). Fall back to deriving one from the raw
+  // manifest schedule for older API responses.
+  const label = agent.scheduleDescription ?? describeSchedule(agent.effectiveSchedule ?? agent.schedule);
+  const muted = (agent.effectiveSchedule ?? agent.schedule).kind === 'manual';
+  return (
+    <span className={muted ? 'text-ink-500 dark:text-ink-400' : undefined}>{label}</span>
+  );
 }
 
 function LastRunCell({ run }: { run: AgentSummary['lastRun'] }): JSX.Element {
@@ -142,7 +148,7 @@ export function AgentsList(): JSX.Element {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-ink-700 dark:text-ink-300">
-                      <ScheduleLabel s={a.schedule} />
+                      <ScheduleLabel agent={a} />
                     </td>
                     <td className="px-4 py-3">
                       <LastRunCell run={a.lastRun} />

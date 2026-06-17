@@ -155,6 +155,7 @@ export type AgentRun<TSettings = unknown, TInput = unknown> = (
  * types by hand.
  */
 export * from './llm-picker.js';
+export * from './schedule.js';
 
 export function defineAgent<TSettings extends z.ZodTypeAny>(args: {
   manifest: AgentManifest<TSettings>;

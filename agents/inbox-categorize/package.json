@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-agent-inbox-categorize",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Apply labels/categories to inbox messages by LLM classification against an operator-defined vocabulary.",
   "type": "module",
   "main": "./dist/index.js",

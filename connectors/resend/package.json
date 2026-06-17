@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-connector-resend",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Resend provider for the @frontrangesystems/business-os-email capability. Used by the framework's transactional email path (password resets, digests).",
   "type": "module",
   "main": "./dist/index.js",

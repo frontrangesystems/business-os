@@ -156,37 +156,37 @@ importers:
         specifier: 0.10.0
         version: 0.10.0(zod@3.25.76)
       '@frontrangesystems/business-os-agent-sdk':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../packages/agent-sdk
       '@frontrangesystems/business-os-agents-all':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../packages/agents-all
       '@frontrangesystems/business-os-connector-composio':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../connectors/composio
       '@frontrangesystems/business-os-connector-sdk':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../packages/connector-sdk
       '@frontrangesystems/business-os-connectors-all':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../packages/connectors-all
       '@frontrangesystems/business-os-core':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../packages/core
       '@frontrangesystems/business-os-db':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../packages/db
       '@frontrangesystems/business-os-module-prospector':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../modules/prospector
       '@frontrangesystems/business-os-module-sdk':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../packages/module-sdk
       '@frontrangesystems/business-os-runtime':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../packages/runtime
       '@frontrangesystems/business-os-ui':
-        specifier: ^0.0.7
+        specifier: ^0.0.9
         version: link:../../packages/ui
       dotenv:
         specifier: ^16.4.5
@@ -728,6 +728,9 @@ importers:
       '@fastify/static':
         specifier: ^7.0.4
         version: 7.0.4
+      '@frontrangesystems/business-os-agent-sdk':
+        specifier: workspace:^
+        version: link:../agent-sdk
       '@frontrangesystems/business-os-api-contract':
         specifier: workspace:^
         version: link:../api-contract
@@ -861,6 +864,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@frontrangesystems/business-os-agent-sdk':
+        specifier: workspace:^
+        version: link:../agent-sdk
       '@frontrangesystems/business-os-module-sdk':
         specifier: workspace:^
         version: link:../module-sdk

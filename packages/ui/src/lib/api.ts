@@ -5,6 +5,10 @@
  * surface as ApiError so pages can `instanceof`-check.
  */
 
+import type { FriendlySchedule } from '@frontrangesystems/business-os-agent-sdk';
+
+export type { FriendlySchedule } from '@frontrangesystems/business-os-agent-sdk';
+
 // Re-exported so anonymous routes (password reset, etc.) can call the raw api
 // helper without importing from the typed Api object.
 export class ApiError extends Error {
@@ -90,6 +94,14 @@ export interface AgentManifest {
 }
 
 export interface AgentSummary extends AgentManifest {
+  /**
+   * Effective schedule (operator override ?? manifest) in human-readable
+   * friendly form, plus a pre-rendered label. The list renders
+   * `scheduleDescription`; the raw `schedule` field is kept for back-compat.
+   * Both are optional so older API responses don't break typing.
+   */
+  effectiveSchedule?: FriendlySchedule;
+  scheduleDescription?: string;
   settings: unknown;
   /**
    * Discriminated-union description of the agent's settings schema, produced
@@ -246,24 +258,15 @@ export const Api = {
     api<{ ok: true }>(`/api/agents/${slug}/disable`, { method: 'POST' }),
   getAgentSchedule: (slug: string) =>
     api<{
-      manifest: { kind: 'cron'; expr: string } | { kind: 'manual' } | { kind: 'event'; topic: string };
-      override:
-        | null
-        | { kind: 'manual' }
-        | { kind: 'cron'; expr: string }
-        | { kind: 'event'; topic: string };
-      effective: { kind: 'cron'; expr: string } | { kind: 'manual' } | { kind: 'event'; topic: string };
+      manifest: FriendlySchedule;
+      override: FriendlySchedule | null;
+      effective: FriendlySchedule;
+      description: string;
+      nextRunAt: string | null;
       supportedTriggers: Array<'cron' | 'manual' | 'event'>;
       availableEventTopics: Array<{ topic: string; displayName: string; via: string }>;
     }>(`/api/agents/${slug}/schedule`),
-  setAgentSchedule: (
-    slug: string,
-    override:
-      | null
-      | { kind: 'manual' }
-      | { kind: 'cron'; expr: string }
-      | { kind: 'event'; topic: string },
-  ) =>
+  setAgentSchedule: (slug: string, override: FriendlySchedule | null) =>
     api<{ ok: true; override: typeof override }>(`/api/agents/${slug}/schedule`, {
       method: 'PUT',
       body: { override },
