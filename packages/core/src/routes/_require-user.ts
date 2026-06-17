@@ -30,5 +30,34 @@ export async function requireUser(
     reply.code(401).send({ error: 'unauthorized' });
     return;
   }
-  req.user = { id: lookup.user.id, email: lookup.user.email };
+  req.user = { id: lookup.user.id, email: lookup.user.email, roles: lookup.roles };
+}
+
+/**
+ * preHandler factory: requires the authenticated user to hold at least ONE of
+ * the listed roles. Composable as a preHandler array AFTER `requireUser`:
+ *
+ *   { preHandler: [requireUser, requireRole('admin')] }
+ *
+ * It does NOT authenticate on its own — if `req.user` is null (requireUser
+ * didn't run or rejected first) it returns 401, so misordering fails closed
+ * rather than letting an anonymous request through. With a user present but
+ * holding none of `allowed`, it returns 403 { error: 'forbidden' }.
+ */
+export function requireRole(
+  ...allowed: string[]
+): (req: FastifyRequest, reply: FastifyReply) => Promise<void> {
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const user = req.user;
+    if (!user) {
+      // Fail closed: requireRole must never be the sole auth gate.
+      reply.code(401).send({ error: 'unauthorized' });
+      return;
+    }
+    const has = user.roles.some((r) => allowed.includes(r));
+    if (!has) {
+      reply.code(403).send({ error: 'forbidden' });
+      return;
+    }
+  };
 }

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { Navigate, useLocation } from 'react-router-dom';
 import { Api, ApiError } from './api';
 
-type User = { id: string; email: string };
+type User = { id: string; email: string; roles: string[]; displayName?: string | null };
 type State =
   | { kind: 'loading' }
   | { kind: 'anonymous' }
@@ -10,6 +10,8 @@ type State =
 
 interface AuthCtx {
   state: State;
+  /** True iff the authenticated user holds the 'admin' role. */
+  isAdmin: boolean;
   refresh: () => Promise<void>;
   login: (email: string, password: string, totp?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -26,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
       if (me.user) {
         setState({
           kind: 'authenticated',
-          user: me.user,
+          user: { ...me.user, roles: me.user.roles ?? [] },
           totpEnrolled: me.totpEnrolled ?? false,
         });
       } else {
@@ -55,13 +57,34 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     setState({ kind: 'anonymous' });
   };
 
-  return <Ctx.Provider value={{ state, refresh, login, logout }}>{children}</Ctx.Provider>;
+  const isAdmin =
+    state.kind === 'authenticated' && state.user.roles.includes('admin');
+
+  return (
+    <Ctx.Provider value={{ state, isAdmin, refresh, login, logout }}>{children}</Ctx.Provider>
+  );
 }
 
 export function useAuth(): AuthCtx {
   const v = useContext(Ctx);
   if (!v) throw new Error('useAuth outside of AuthProvider');
   return v;
+}
+
+/**
+ * Route guard: renders children only for admins. Non-admins are redirected to
+ * the dashboard. Must sit inside RequireAuth (it assumes an authenticated user;
+ * a still-loading auth state renders nothing rather than flashing a redirect).
+ */
+export function RequireAdmin({ children }: { children: ReactNode }): JSX.Element {
+  const { state, isAdmin } = useAuth();
+  if (state.kind === 'loading') {
+    return <div className="flex h-full items-center justify-center text-ink-400">…</div>;
+  }
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
 }
 
 export function RequireAuth({ children }: { children: ReactNode }): JSX.Element {

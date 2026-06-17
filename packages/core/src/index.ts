@@ -8,4 +8,5 @@ export * from './inventory.js';
 export * from './zod-form.js';
 export * from './sentry.js';
 export * from './agent-refresh.js';
-export { requireUser } from './routes/_require-user.js';
+export { requireUser, requireRole } from './routes/_require-user.js';
+export { registerUserRoutes } from './routes/users.js';

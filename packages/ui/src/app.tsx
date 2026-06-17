@@ -13,7 +13,8 @@ import { AuditPage } from './pages/AuditPage';
 import { ModulePagePlaceholder } from './pages/ModulePagePlaceholder';
 import { NotFound } from './pages/NotFound';
 import { Settings } from './pages/Settings';
-import { AuthProvider, RequireAuth } from './lib/auth';
+import { Users } from './pages/Users';
+import { AuthProvider, RequireAuth, RequireAdmin } from './lib/auth';
 import { ThemeProvider } from './lib/theme';
 import { ToastProvider } from './lib/toast';
 import { BrandingProvider, type Branding } from './lib/branding';
@@ -86,24 +87,56 @@ export function createOperatorApp(options: CreateOperatorAppOptions = {}): {
                     <Route path="agents" element={<AgentsList />} />
                     <Route path="agents/:slug" element={<AgentDetail />} />
                     <Route path="runs/:id" element={<RunDetail />} />
-                    <Route path="connectors" element={<ConnectorsPage />} />
+                    {/* Connectors/Providers is an admin-only area. */}
+                    <Route
+                      path="connectors"
+                      element={
+                        <RequireAdmin>
+                          <ConnectorsPage />
+                        </RequireAdmin>
+                      }
+                    />
                     {/* /providers used to be its own page; it's now a tab on
                         /connectors. Redirect to preserve any saved bookmarks. */}
                     <Route path="providers" element={<Navigate to="/connectors?tab=available" replace />} />
                     <Route path="audit" element={<AuditPage />} />
+                    {/* User management — admin only (route guard mirrors the
+                        server's requireRole('admin') gate). */}
+                    <Route
+                      path="users"
+                      element={
+                        <RequireAdmin>
+                          <Users />
+                        </RequireAdmin>
+                      }
+                    />
                     <Route path="settings" element={<Settings />} />
 
                     {/* Module routes — one Route per uiPage, plus a per-module
                         index fallback so /modules/<slug> with no pages still
                         works. */}
                     {modules.flatMap((m) =>
-                      m.pages.map((p) => (
-                        <Route
-                          key={`${m.slug}/${p.path}`}
-                          path={`modules/${m.slug}${p.path ? '/' + p.path : ''}`}
-                          element={<p.Component />}
-                        />
-                      )),
+                      m.pages.map((p) => {
+                        // AudienceTag enforcement (route side): a page declaring
+                        // audience {kind:'admins'} is guarded so a non-admin who
+                        // deep-links to it is bounced to the dashboard. Anything
+                        // else (everyone/departments/unknown) renders for all.
+                        const element =
+                          p.audience?.kind === 'admins' ? (
+                            <RequireAdmin>
+                              <p.Component />
+                            </RequireAdmin>
+                          ) : (
+                            <p.Component />
+                          );
+                        return (
+                          <Route
+                            key={`${m.slug}/${p.path}`}
+                            path={`modules/${m.slug}${p.path ? '/' + p.path : ''}`}
+                            element={element}
+                          />
+                        );
+                      }),
                     )}
 
                     {/* Anything not matched by a module's own routes (e.g. the

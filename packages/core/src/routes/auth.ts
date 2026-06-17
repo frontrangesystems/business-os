@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
-import { users } from '@frontrangesystems/business-os-db';
+import { users, userRoles } from '@frontrangesystems/business-os-db';
 import { authContract } from '@frontrangesystems/business-os-api-contract';
 import { SESSION_COOKIE } from '../app.js';
 import { requireUser } from './_require-user.js';
@@ -107,7 +107,14 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });
-    req.user = { id: user.id, email: user.email };
+    // Load roles so the post-login request context (and audit) reflect them.
+    // The response below doesn't ship roles — the UI reads them from /auth/me
+    // — but req.user must satisfy its type and is used by req.audit.
+    const roleRows = await req.deps.db
+      .select({ role: userRoles.role })
+      .from(userRoles)
+      .where(eq(userRoles.userId, user.id));
+    req.user = { id: user.id, email: user.email, roles: roleRows.map((r) => r.role) };
     await req.audit('auth.login.success', { email });
 
     reply.header(
@@ -144,13 +151,20 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       .select({
         totpSecretEncrypted: users.totpSecretEncrypted,
         theme: users.theme,
+        displayName: users.displayName,
       })
       .from(users)
       .where(eq(users.id, req.user!.id))
       .limit(1);
     const totpEnrolled = !!rows[0]?.totpSecretEncrypted;
     const theme = rows[0]?.theme ?? 'system';
-    return { user: req.user, totpEnrolled, preferences: { theme } };
+    // req.user already carries { id, email, roles } from requireUser; fold in
+    // displayName so the UI has the full current-user shape from one call.
+    return {
+      user: { ...req.user!, displayName: rows[0]?.displayName ?? null },
+      totpEnrolled,
+      preferences: { theme },
+    };
   });
 
   // ---- PATCH /auth/me/preferences ----

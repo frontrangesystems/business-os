@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm';
 import type { Db } from '@frontrangesystems/business-os-db';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAdminRoutes } from './routes/admin.js';
+import { registerUserRoutes } from './routes/users.js';
 import { registerUiServe } from './ui-serve.js';
 import { registerFastifySentry } from './sentry.js';
 import { registerModuleRoutes } from './modules.js';
@@ -69,7 +70,7 @@ declare module 'fastify' {
   interface FastifyRequest {
     requestId: string;
     deps: AppDeps;
-    user?: { id: string; email: string } | null;
+    user?: { id: string; email: string; roles: string[] } | null;
     audit(action: string, meta?: Record<string, unknown>): Promise<void>;
   }
 }
@@ -165,6 +166,7 @@ export function buildApp(deps: AppDeps): FastifyInstance & { deps: AppDeps } {
   registerFastifySentry(app);
   registerAuthRoutes(app);
   registerAdminRoutes(app);
+  registerUserRoutes(app);
 
   // Modules go under /api/modules/<slug>. Registration is async (loads settings
   // from the DB) and must happen BEFORE Fastify's ready phase — startServer

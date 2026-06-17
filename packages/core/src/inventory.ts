@@ -105,7 +105,7 @@ export interface ModulePackageLike {
   // assignable. Function-typed properties are strictly variant under
   // `strictFunctionTypes`; methods are bivariant.
   registerRoutes?(app: unknown, ctx: unknown): void | Promise<void>;
-  uiPages?: Array<{ path: string; navLabel?: string }>;
+  uiPages?: Array<{ path: string; navLabel?: string; audience?: unknown }>;
   /**
    * Background workers the module owns, keyed by worker name. Mirrors
    * module-sdk's ModulePackage.backgroundWorkers. Each runs in the worker

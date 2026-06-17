@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-db",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Drizzle core schema + forward-only migration runner.",
   "type": "module",
   "main": "./dist/index.js",

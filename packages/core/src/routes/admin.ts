@@ -9,7 +9,7 @@ import {
   users,
 } from '@frontrangesystems/business-os-db';
 import type { Db } from '@frontrangesystems/business-os-db';
-import { requireUser } from './_require-user.js';
+import { requireUser, requireRole } from './_require-user.js';
 import { zodToFieldSchema } from '../zod-form.js';
 import { AGENT_REFRESH_CHANNEL } from '../agent-refresh.js';
 
@@ -43,10 +43,32 @@ async function notifyAgentRefresh(db: Db, slug: string): Promise<void> {
  *     and store encrypted credentials (via SecretsStore — bytes never
  *     leave that interface)
  *
- * Every endpoint requires an authenticated session. Auth model is
- * intentionally simple right now: any active user is an operator.
- * Roles can be added later without breaking these routes.
+ * Every endpoint requires an authenticated session (requireUser). On top of
+ * that, every state-changing / admin action is gated with
+ * `requireRole('admin')` — read-only endpoints (lists, detail GETs, dashboard,
+ * audit view) stay available to any logged-in user. The preHandlers compose as
+ * `[requireUser, requireRole('admin')]` so requireUser populates req.user
+ * (incl. roles) before requireRole inspects it.
  */
+
+/**
+ * Audience tag, normalized for the wire. Mirrors module-sdk's AudienceTag but
+ * declared here to avoid core depending on module-sdk at value level. V1
+ * enforces only 'everyone' vs 'admins'; 'departments' is mapped to 'everyone'
+ * (department-scoping comes later) and anything unrecognized falls back to
+ * 'everyone' (fail-open for *visibility* only — never for write authz, which is
+ * always requireRole-gated server-side).
+ */
+type WireAudience = { kind: 'everyone' } | { kind: 'admins' };
+
+function normalizeAudience(value: unknown): WireAudience {
+  if (value && typeof value === 'object' && 'kind' in value) {
+    const kind = (value as { kind?: unknown }).kind;
+    if (kind === 'admins') return { kind: 'admins' };
+  }
+  // everyone, departments (V1), or unknown → everyone
+  return { kind: 'everyone' };
+}
 
 const SETTINGS_AGENT_SCOPE = (slug: string): string => `agent:${slug}`;
 const SETTINGS_AGENT_BINDINGS_SCOPE = (slug: string): string => `agent-bindings:${slug}`;
@@ -430,7 +452,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // Install an agent. Optional body lets the operator seed settings + bindings
   // in the same round-trip so they don't end up with a freshly-enabled agent
   // that's missing connector bindings and can't run.
-  app.post('/api/agents/:slug/enable', { preHandler: requireUser }, async (req, reply) => {
+  app.post('/api/agents/:slug/enable', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const slug = (req.params as { slug: string }).slug;
     let agent;
@@ -477,7 +499,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // Uninstall an agent. Preserves runs, settings, bindings, schedule — so
   // re-enabling later doesn't lose history. A scheduler watching this scope
   // should stop firing the agent on cron / event triggers.
-  app.post('/api/agents/:slug/disable', { preHandler: requireUser }, async (req, reply) => {
+  app.post('/api/agents/:slug/disable', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const slug = (req.params as { slug: string }).slug;
     try {
@@ -605,7 +627,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // ---------- PUT /api/agents/:slug/schedule ----------
   // Set or clear the override. Body is a discriminated union: omit to
   // clear (revert to manifest), or send a `{kind: ...}` object to override.
-  app.put('/api/agents/:slug/schedule', { preHandler: requireUser }, async (req, reply) => {
+  app.put('/api/agents/:slug/schedule', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const slug = (req.params as { slug: string }).slug;
     let agent;
@@ -659,7 +681,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   });
 
   // ---------- PUT /api/agents/:slug/bindings ----------
-  app.put('/api/agents/:slug/bindings', { preHandler: requireUser }, async (req, reply) => {
+  app.put('/api/agents/:slug/bindings', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const slug = (req.params as { slug: string }).slug;
     let agent;
@@ -735,7 +757,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   });
 
   // ---------- PUT /api/agents/:slug/settings ----------
-  app.put('/api/agents/:slug/settings', { preHandler: requireUser }, async (req, reply) => {
+  app.put('/api/agents/:slug/settings', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const slug = (req.params as { slug: string }).slug;
     let agent;
@@ -778,7 +800,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   });
 
   // ---------- POST /api/agents/:slug/run ----------
-  app.post('/api/agents/:slug/run', { preHandler: requireUser }, async (req, reply) => {
+  app.post('/api/agents/:slug/run', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     if (!require503(req.deps.trigger, reply, 'trigger')) return;
     const slug = (req.params as { slug: string }).slug;
@@ -941,7 +963,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // verify() FIRST (no persisting on failure) → insert instance →
   // save creds + settings → flip isActive=true. Anything that fails
   // partway leaves the operator with no half-broken row to clean up.
-  app.post('/api/connectors', { preHandler: requireUser }, async (req, reply) => {
+  app.post('/api/connectors', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const body = CreateConnectorInstanceRequest.safeParse(req.body);
     if (!body.success) {
@@ -1019,7 +1041,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   });
 
   // ---------- PATCH /api/connectors/:id ----------
-  app.patch('/api/connectors/:id', { preHandler: requireUser }, async (req, reply) => {
+  app.patch('/api/connectors/:id', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const id = (req.params as { id: string }).id;
     const body = UpdateConnectorInstanceRequest.safeParse(req.body);
@@ -1106,7 +1128,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // BEFORE persisting. On test failure, nothing is written — the existing
   // (working) credentials stay in place. On success, the new creds replace
   // the old and the instance stays active.
-  app.put('/api/connectors/:id/credentials', { preHandler: requireUser }, async (req, reply) => {
+  app.put('/api/connectors/:id/credentials', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const id = (req.params as { id: string }).id;
     const body = SetConnectorCredentialsRequest.safeParse(req.body);
@@ -1158,7 +1180,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   //
   // The composio user_id is deterministic (`bos-<instanceId>`) — no
   // intermediate state to store between connect and finalize.
-  app.post('/api/connectors/:id/connect', { preHandler: requireUser }, async (req, reply) => {
+  app.post('/api/connectors/:id/connect', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const id = (req.params as { id: string }).id;
 
@@ -1220,7 +1242,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // account id) and marks the instance active. If no, returns { pending: true }.
   app.post(
     '/api/connectors/:id/finalize-connect',
-    { preHandler: requireUser },
+    { preHandler: [requireUser, requireRole('admin')] },
     async (req, reply) => {
       if (!require503(req.deps.inventory, reply, 'inventory')) return;
       const id = (req.params as { id: string }).id;
@@ -1311,7 +1333,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   //
   // On success, returns { ok: true } and the UI flips the instance to active.
   // On failure, returns { ok: false, error: <message> } — UI shows it inline.
-  app.post('/api/connectors/:id/test', { preHandler: requireUser }, async (req, reply) => {
+  app.post('/api/connectors/:id/test', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
     const id = (req.params as { id: string }).id;
     const existing = await req.deps.db
@@ -1375,7 +1397,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   });
 
   // ---------- DELETE /api/connectors/:id ----------
-  app.delete('/api/connectors/:id', { preHandler: requireUser }, async (req, reply) => {
+  app.delete('/api/connectors/:id', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     const id = (req.params as { id: string }).id;
     const existing = await req.deps.db
       .select()
@@ -1430,7 +1452,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // just don't get new siblings until the provider is re-enabled.
   app.put(
     '/api/providers/:capability/:slug',
-    { preHandler: requireUser },
+    { preHandler: [requireUser, requireRole('admin')] },
     async (req, reply) => {
       if (!require503(req.deps.inventory, reply, 'inventory')) return;
       const { capability, slug } = req.params as { capability: string; slug: string };
@@ -1484,7 +1506,16 @@ export function registerAdminRoutes(app: FastifyInstance): void {
           version: mod.manifest.version,
           displayName: mod.manifest.displayName,
           description: mod.manifest.description,
-          uiPages: mod.uiPages?.map((p) => ({ path: p.path, navLabel: p.navLabel })) ?? [],
+          // `defaultAudience` + per-page `audience` drive the UI's nav-gating
+          // and route guard (AudienceTag enforcement). Passed through as-is;
+          // the UI treats anything other than {kind:'admins'} as everyone.
+          defaultAudience: normalizeAudience(mod.manifest.defaultAudience),
+          uiPages:
+            mod.uiPages?.map((p) => ({
+              path: p.path,
+              navLabel: p.navLabel,
+              audience: normalizeAudience(p.audience),
+            })) ?? [],
           settings: rows[0]?.value ?? null,
           settingsSchema: zodToFieldSchema(
             mod.manifest.settingsSchema as Parameters<typeof zodToFieldSchema>[0],
@@ -1498,7 +1529,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   // ---------- PUT /api/modules/:slug/settings ----------
   app.put(
     '/api/modules/:slug/settings',
-    { preHandler: requireUser },
+    { preHandler: [requireUser, requireRole('admin')] },
     async (req, reply) => {
       if (!require503(req.deps.inventory, reply, 'inventory')) return;
       if (!req.deps.inventory.listModules || !req.deps.inventory.getModule) {

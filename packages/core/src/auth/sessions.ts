@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import type { Db } from '@frontrangesystems/business-os-db';
-import { sessions, users, type User } from '@frontrangesystems/business-os-db';
+import { sessions, users, userRoles, type User } from '@frontrangesystems/business-os-db';
 
 /**
  * Sessions.
@@ -55,6 +55,8 @@ export async function createSession(
 
 export interface SessionLookup {
   user: User;
+  /** App-level roles the user holds (e.g. ['admin']). May be empty. */
+  roles: string[];
   sessionId: string;
   expiresAt: Date;
 }
@@ -81,7 +83,14 @@ export async function lookupSession(db: Db, token: string): Promise<SessionLooku
 
   const row = rows[0];
   if (!row) return null;
-  return { user: row.user, sessionId: row.sessionId, expiresAt: row.expiresAt };
+
+  const roleRows = await db
+    .select({ role: userRoles.role })
+    .from(userRoles)
+    .where(eq(userRoles.userId, row.user.id));
+  const roles = roleRows.map((r) => r.role);
+
+  return { user: row.user, roles, sessionId: row.sessionId, expiresAt: row.expiresAt };
 }
 
 export async function revokeSession(db: Db, token: string): Promise<void> {
