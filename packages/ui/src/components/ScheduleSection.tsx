@@ -1,45 +1,87 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Api, ApiError } from '../lib/api';
+import {
+  describeSchedule,
+  nextRun,
+  DAY_NAMES,
+  formatTime12h,
+  type FriendlySchedule,
+} from '@frontrangesystems/business-os-agent-sdk';
+import { Api, ApiError, type FriendlySchedule as ApiFriendlySchedule } from '../lib/api';
 import { apiErrorMessage } from '../lib/api-errors';
 import { useToast } from '../lib/toast';
 
 /**
- * Renders an agent's effective trigger as a pill plus an Edit pencil that
- * opens a small dialog. The operator picks among the agent's
- * `supportedTriggers` (manual / cron / event). The override is persisted to
- * the DB; the scheduler honors it on next refresh.
+ * Renders an agent's effective schedule as a human-readable label plus an Edit
+ * button that opens a dialog with friendly controls — no cron jargon, no raw
+ * expressions. The operator picks among:
+ *   - Manual (runs only when triggered)
+ *   - Every N minutes / Every N hours
+ *   - Daily at <time>
+ *   - Weekly on <day> at <time>
+ *   - Event (when the agent + a bound connector support it)
+ * A "Next run" preview is computed client-side from the chosen schedule.
  *
- * Event mode is shown only if the agent supports it AND at least one
- * connector instance with a known event topic is available — gated in a
- * follow-up PR. For now event-capable agents see "Event triggers are not
- * yet wired up" as a placeholder.
- *
- * Cron mode offers a small dropdown of common presets plus a "Custom" option
- * that reveals a free-text cron-expression field.
+ * The friendly schedule is translated to/from cron on the server; the operator
+ * never sees a cron expression here.
  */
 
-type Schedule =
-  | { kind: 'manual' }
-  | { kind: 'cron'; expr: string }
-  | { kind: 'event'; topic: string };
+type Sched = FriendlySchedule;
 
 interface ScheduleData {
-  manifest: Schedule;
-  override: Schedule | null;
-  effective: Schedule;
+  manifest: Sched;
+  override: Sched | null;
+  effective: Sched;
+  description: string;
+  nextRunAt: string | null;
   supportedTriggers: Array<'cron' | 'manual' | 'event'>;
   availableEventTopics: Array<{ topic: string; displayName: string; via: string }>;
 }
 
-const CRON_PRESETS: Array<{ label: string; expr: string }> = [
-  { label: 'Every 15 minutes', expr: '*/15 * * * *' },
-  { label: 'Every 30 minutes', expr: '*/30 * * * *' },
-  { label: 'Every hour', expr: '0 * * * *' },
-  { label: 'Every 6 hours', expr: '0 */6 * * *' },
-  { label: 'Daily at 9 AM UTC', expr: '0 9 * * *' },
-  { label: 'Weekly (Mon 9 AM UTC)', expr: '0 9 * * 1' },
-];
+/** Time-based modes the friendly editor offers (maps to the 'cron' trigger). */
+type TimedMode = 'interval-minute' | 'interval-hour' | 'daily' | 'weekly';
+type EditMode = 'manual' | 'event' | TimedMode;
+
+function modeOf(s: Sched): EditMode {
+  switch (s.kind) {
+    case 'manual':
+      return 'manual';
+    case 'event':
+      return 'event';
+    case 'interval':
+      return s.every === 'minute' ? 'interval-minute' : 'interval-hour';
+    case 'daily':
+      return 'daily';
+    case 'weekly':
+      return 'weekly';
+    case 'cron':
+      // Unrecognised cron escape hatch — default the editor to a sensible timed
+      // option so the operator can re-author in friendly terms.
+      return 'interval-hour';
+  }
+}
+
+/** Format an ISO timestamp as a friendly "Next run" string with relative hint. */
+function formatNextRun(iso: string | null): string {
+  if (!iso) return 'Not scheduled';
+  const when = new Date(iso);
+  const ms = when.getTime() - Date.now();
+  const abs = when.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  if (ms <= 0) return abs;
+  const mins = Math.round(ms / 60000);
+  let rel: string;
+  if (mins < 1) rel = 'in under a minute';
+  else if (mins < 60) rel = `in ${mins} min`;
+  else if (mins < 60 * 24) rel = `in ${Math.round(mins / 60)} hr`;
+  else rel = `in ${Math.round(mins / (60 * 24))} d`;
+  return `${abs} (${rel})`;
+}
 
 export function ScheduleSection({ slug }: { slug: string }): JSX.Element {
   const { toast } = useToast();
@@ -49,10 +91,8 @@ export function ScheduleSection({ slug }: { slug: string }): JSX.Element {
 
   const reload = (): void => {
     Api.getAgentSchedule(slug)
-      .then(setData)
-      .catch((e: unknown) =>
-        setError(e instanceof ApiError ? e.message : 'load failed'),
-      );
+      .then((d) => setData(d as ScheduleData))
+      .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'load failed'));
   };
 
   useEffect(() => {
@@ -72,9 +112,10 @@ export function ScheduleSection({ slug }: { slug: string }): JSX.Element {
     );
   }
 
-  const eff = data.effective;
-  const effLabel = describeSchedule(eff);
+  const effLabel = data.description || describeSchedule(data.effective);
   const overrideActive = !!data.override;
+  const nextLabel = formatNextRun(data.nextRunAt);
+  const showsNext = data.effective.kind !== 'manual' && data.effective.kind !== 'event';
 
   return (
     <section className="card flex flex-col items-start gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -86,12 +127,17 @@ export function ScheduleSection({ slug }: { slug: string }): JSX.Element {
           <span className="pill-muted">{effLabel}</span>
           {overrideActive ? (
             <span className="text-xs text-ink-500 dark:text-ink-400">
-              operator override · manifest says {describeSchedule(data.manifest)}
+              custom · default is {describeSchedule(data.manifest)}
             </span>
           ) : (
-            <span className="text-xs text-ink-500 dark:text-ink-400">manifest default</span>
+            <span className="text-xs text-ink-500 dark:text-ink-400">default</span>
           )}
         </div>
+        {showsNext && (
+          <div className="mt-2 text-xs text-ink-500 dark:text-ink-400">
+            Next run: <span className="text-ink-700 dark:text-ink-200">{nextLabel}</span>
+          </div>
+        )}
       </div>
       <button className="btn-secondary shrink-0" onClick={() => setEditing(true)}>
         Edit
@@ -102,7 +148,10 @@ export function ScheduleSection({ slug }: { slug: string }): JSX.Element {
         data={data}
         slug={slug}
         onSaved={(next) => {
-          setData((prev) => (prev ? { ...prev, override: next, effective: next ?? prev.manifest } : prev));
+          // Server is the source of truth for description + nextRunAt; refetch
+          // so the displayed label + preview stay exact after a save.
+          void next;
+          reload();
           toast.success('Schedule saved.');
           setEditing(false);
         }}
@@ -111,60 +160,77 @@ export function ScheduleSection({ slug }: { slug: string }): JSX.Element {
   );
 }
 
-function describeSchedule(s: Schedule): string {
-  if (s.kind === 'manual') return 'Manual only';
-  if (s.kind === 'cron') {
-    const preset = CRON_PRESETS.find((p) => p.expr === s.expr);
-    return preset ? preset.label : `Cron · ${s.expr}`;
-  }
-  return `Event · ${s.topic}`;
-}
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h);
+const MINUTE_OPTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
 function EditDialog(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   data: ScheduleData;
   slug: string;
-  onSaved: (next: Schedule | null) => void;
+  onSaved: (next: Sched | null) => void;
 }): JSX.Element {
   const { toast } = useToast();
-  const initialKind = (props.data.override ?? props.data.manifest).kind;
-  const [kind, setKind] = useState<'cron' | 'manual' | 'event'>(initialKind);
-  const [cronExpr, setCronExpr] = useState<string>(
-    props.data.override?.kind === 'cron'
-      ? props.data.override.expr
-      : props.data.manifest.kind === 'cron'
-        ? props.data.manifest.expr
-        : CRON_PRESETS[0]!.expr,
+  const start = props.data.override ?? props.data.manifest;
+
+  const [mode, setMode] = useState<EditMode>(modeOf(start));
+  const [intervalN, setIntervalN] = useState<number>(
+    start.kind === 'interval' ? start.n : 15,
   );
+  // at = "HH:MM" 24h. Split into hour/minute selects for friendliness.
+  const [hour, setHour] = useState<number>(() => parseAtHour(start));
+  const [minute, setMinute] = useState<number>(() => parseAtMinute(start));
+  const [weekday, setWeekday] = useState<number>(start.kind === 'weekly' ? start.day : 1);
   const [eventTopic, setEventTopic] = useState<string>(
-    props.data.override?.kind === 'event'
-      ? props.data.override.topic
-      : props.data.manifest.kind === 'event'
-        ? props.data.manifest.topic
-        : '',
+    start.kind === 'event' ? start.topic : '',
   );
   const [busy, setBusy] = useState(false);
 
-  // Reset state when dialog reopens.
+  // Reset all state when the dialog reopens against fresh data.
   useEffect(() => {
     if (!props.open) return;
-    const k = (props.data.override ?? props.data.manifest).kind;
-    setKind(k);
+    const s = props.data.override ?? props.data.manifest;
+    setMode(modeOf(s));
+    setIntervalN(s.kind === 'interval' ? s.n : 15);
+    setHour(parseAtHour(s));
+    setMinute(parseAtMinute(s));
+    setWeekday(s.kind === 'weekly' ? s.day : 1);
+    setEventTopic(s.kind === 'event' ? s.topic : '');
     setBusy(false);
   }, [props.open, props.data]);
 
   const supported = new Set(props.data.supportedTriggers);
+  const at = `${pad(hour)}:${pad(minute)}`;
+
+  // Build the FriendlySchedule the current form represents.
+  const candidate: Sched | null = useMemo(() => {
+    switch (mode) {
+      case 'manual':
+        return { kind: 'manual' };
+      case 'event':
+        return eventTopic ? { kind: 'event', topic: eventTopic } : null;
+      case 'interval-minute':
+        return { kind: 'interval', every: 'minute', n: intervalN };
+      case 'interval-hour':
+        return { kind: 'interval', every: 'hour', n: intervalN };
+      case 'daily':
+        return { kind: 'daily', at };
+      case 'weekly':
+        return { kind: 'weekly', day: weekday, at };
+    }
+  }, [mode, eventTopic, intervalN, at, weekday]);
+
+  const previewNext =
+    candidate && candidate.kind !== 'manual' && candidate.kind !== 'event'
+      ? nextRun(candidate)
+      : null;
 
   const save = async (): Promise<void> => {
+    if (!candidate) return;
     setBusy(true);
     try {
-      let next: Schedule;
-      if (kind === 'manual') next = { kind: 'manual' };
-      else if (kind === 'cron') next = { kind: 'cron', expr: cronExpr };
-      else next = { kind: 'event', topic: eventTopic };
-      await Api.setAgentSchedule(props.slug, next);
-      props.onSaved(next);
+      await Api.setAgentSchedule(props.slug, candidate as ApiFriendlySchedule);
+      props.onSaved(candidate);
     } catch (e: unknown) {
       toast.error(apiErrorMessage(e, 'Save failed.'));
     } finally {
@@ -184,30 +250,44 @@ function EditDialog(props: {
     }
   };
 
+  // Which modes are offered. Time-based + manual are gated by supportedTriggers;
+  // event only when supported AND at least one connector exposes a topic.
+  const timedAllowed = supported.has('cron');
+  const eventAllowed = supported.has('event');
+
+  const modeOptions: Array<{ value: EditMode; label: string; disabled: boolean }> = [
+    { value: 'manual', label: 'Manual', disabled: !supported.has('manual') },
+    { value: 'interval-minute', label: 'Every N minutes', disabled: !timedAllowed },
+    { value: 'interval-hour', label: 'Every N hours', disabled: !timedAllowed },
+    { value: 'daily', label: 'Daily', disabled: !timedAllowed },
+    { value: 'weekly', label: 'Weekly', disabled: !timedAllowed },
+    { value: 'event', label: 'On an event', disabled: !eventAllowed },
+  ];
+
   return (
     <Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl dark:bg-ink-900">
-          <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Edit schedule
-          </Dialog.Title>
+          <Dialog.Title className="text-lg font-semibold tracking-tight">When should this run?</Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-ink-500 dark:text-ink-400">
-            Pick when this agent fires. Override the manifest default, or revert to it.
+            Choose how often this agent runs. You can change it any time.
           </Dialog.Description>
+
           <div className="mt-5 space-y-5">
             <fieldset>
-              <legend className="label">Trigger</legend>
+              <legend className="label">How it runs</legend>
               <div className="mt-1 flex flex-wrap gap-1.5">
-                {(['manual', 'cron', 'event'] as const).map((k) => {
-                  const allowed = supported.has(k);
-                  const selected = k === kind;
+                {modeOptions.map((opt) => {
+                  const selected = opt.value === mode;
                   return (
                     <label
-                      key={k}
+                      key={opt.value}
                       className={
                         'rounded-md border px-3 py-1.5 text-sm transition-colors ' +
-                        (allowed ? 'cursor-pointer ' : 'opacity-40 cursor-not-allowed ') +
+                        (opt.disabled
+                          ? 'opacity-40 cursor-not-allowed '
+                          : 'cursor-pointer ') +
                         (selected
                           ? 'border-accent bg-accent/10 text-accent dark:border-accent dark:bg-accent/20'
                           : 'border-ink-200 hover:bg-ink-50 dark:border-ink-700 dark:hover:bg-ink-800')
@@ -216,59 +296,101 @@ function EditDialog(props: {
                       <input
                         type="radio"
                         className="sr-only"
-                        name="trigger-kind"
-                        value={k}
+                        name="schedule-mode"
+                        value={opt.value}
                         checked={selected}
-                        disabled={!allowed}
-                        onChange={() => setKind(k)}
+                        disabled={opt.disabled}
+                        onChange={() => setMode(opt.value)}
                       />
-                      {k === 'manual' ? 'Manual' : k === 'cron' ? 'Cron' : 'Event'}
+                      {opt.label}
                     </label>
                   );
                 })}
               </div>
-              {kind === 'event' && (
-                <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">
-                  Event triggers aren't wired up yet — the override saves, but the
-                  scheduler won't fire on events until the connector implements{' '}
-                  <code className="font-mono text-[10px]">subscribeToEvents</code>.
-                </p>
-              )}
             </fieldset>
-            {kind === 'cron' && (
+
+            {mode === 'manual' && (
+              <p className="text-sm text-ink-500 dark:text-ink-400">
+                This agent runs only when you click <strong>Run now</strong> (or another agent
+                triggers it). It won't run on a schedule.
+              </p>
+            )}
+
+            {(mode === 'interval-minute' || mode === 'interval-hour') && (
               <div>
-                <label className="label">Cron preset</label>
-                <select
-                  className="input"
-                  value={CRON_PRESETS.some((p) => p.expr === cronExpr) ? cronExpr : 'custom'}
-                  onChange={(e) => {
-                    if (e.target.value !== 'custom') setCronExpr(e.target.value);
-                  }}
-                >
-                  {CRON_PRESETS.map((p) => (
-                    <option key={p.expr} value={p.expr}>
-                      {p.label} ({p.expr})
-                    </option>
-                  ))}
-                  <option value="custom">Custom…</option>
-                </select>
-                <input
-                  className="input mt-2 font-mono"
-                  value={cronExpr}
-                  onChange={(e) => setCronExpr(e.target.value)}
-                  placeholder="* * * * *"
-                />
-                <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
-                  5-field UTC cron. Use crontab.guru if you need to dial it in.
-                </p>
+                <label className="label">Run every</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="number"
+                    className="input w-24"
+                    min={1}
+                    max={mode === 'interval-minute' ? 59 : 23}
+                    value={intervalN}
+                    onChange={(e) => setIntervalN(clamp(Number(e.target.value), 1, mode === 'interval-minute' ? 59 : 23))}
+                  />
+                  <span className="text-sm text-ink-600 dark:text-ink-300">
+                    {mode === 'interval-minute' ? 'minutes' : 'hours'}
+                  </span>
+                </div>
               </div>
             )}
-            {kind === 'event' && (
+
+            {(mode === 'daily' || mode === 'weekly') && (
+              <div className="space-y-3">
+                {mode === 'weekly' && (
+                  <div>
+                    <label className="label">On</label>
+                    <select
+                      className="input mt-1"
+                      value={weekday}
+                      onChange={(e) => setWeekday(Number(e.target.value))}
+                    >
+                      {DAY_NAMES.map((d, i) => (
+                        <option key={d} value={i}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="label">At (UTC)</label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <select
+                      className="input w-24"
+                      value={hour}
+                      onChange={(e) => setHour(Number(e.target.value))}
+                    >
+                      {HOUR_OPTIONS.map((h) => (
+                        <option key={h} value={h}>
+                          {pad(h)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-ink-500">:</span>
+                    <select
+                      className="input w-24"
+                      value={minute}
+                      onChange={(e) => setMinute(Number(e.target.value))}
+                    >
+                      {MINUTE_OPTIONS.map((m) => (
+                        <option key={m} value={m}>
+                          {pad(m)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-sm text-ink-500 dark:text-ink-400">{formatTime12h(at)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {mode === 'event' && (
               <div>
-                <label className="label">Event topic</label>
+                <label className="label">Trigger on</label>
                 {props.data.availableEventTopics.length > 0 ? (
                   <select
-                    className="input"
+                    className="input mt-1"
                     value={eventTopic}
                     onChange={(e) => setEventTopic(e.target.value)}
                   >
@@ -280,23 +402,36 @@ function EditDialog(props: {
                     ))}
                   </select>
                 ) : (
-                  <div className="rounded border border-dashed border-ink-200 px-3 py-3 text-xs text-ink-500 dark:border-ink-700 dark:text-ink-400">
-                    No bound connector exposes event topics. Bind a Gmail (or
-                    other event-capable) connector to this agent first.
+                  <div className="mt-1 rounded border border-dashed border-ink-200 px-3 py-3 text-xs text-ink-500 dark:border-ink-700 dark:text-ink-400">
+                    No connected account exposes events yet. Connect a Gmail (or other
+                    event-capable) account and bind it to this agent first.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Live preview of the resulting schedule + its next run. */}
+            {candidate && (
+              <div className="rounded-md bg-ink-50 px-3 py-2.5 text-sm dark:bg-ink-800/60">
+                <div className="text-ink-700 dark:text-ink-200">{describeSchedule(candidate)}</div>
+                {previewNext && (
+                  <div className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                    Next run: {formatNextRun(previewNext.toISOString())}
                   </div>
                 )}
               </div>
             )}
           </div>
+
           <div className="mt-6 flex items-center justify-end gap-2">
             {props.data.override && (
               <button
                 className="btn-ghost"
                 onClick={revert}
                 disabled={busy}
-                title="Revert to the manifest's default schedule"
+                title="Go back to the agent's default schedule"
               >
-                Revert to manifest
+                Reset to default
               </button>
             )}
             <div className="flex-1" />
@@ -305,11 +440,7 @@ function EditDialog(props: {
                 Cancel
               </button>
             </Dialog.Close>
-            <button
-              className="btn-primary"
-              onClick={save}
-              disabled={busy || (kind === 'event' && !eventTopic) || (kind === 'cron' && !cronExpr)}
-            >
+            <button className="btn-primary" onClick={save} disabled={busy || !candidate}>
               {busy ? 'Saving…' : 'Save'}
             </button>
           </div>
@@ -317,4 +448,27 @@ function EditDialog(props: {
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  if (Number.isNaN(n)) return lo;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+function parseAtHour(s: Sched): number {
+  if ((s.kind === 'daily' || s.kind === 'weekly') && /^\d\d:\d\d$/.test(s.at)) {
+    return Number(s.at.slice(0, 2));
+  }
+  return 9;
+}
+
+function parseAtMinute(s: Sched): number {
+  if ((s.kind === 'daily' || s.kind === 'weekly') && /^\d\d:\d\d$/.test(s.at)) {
+    return Number(s.at.slice(3, 5));
+  }
+  return 0;
 }

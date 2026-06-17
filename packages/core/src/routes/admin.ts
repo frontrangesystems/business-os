@@ -9,6 +9,13 @@ import {
   users,
 } from '@frontrangesystems/business-os-db';
 import type { Db } from '@frontrangesystems/business-os-db';
+import {
+  FriendlyScheduleSchema,
+  describeSchedule,
+  cronToFriendly,
+  nextRun,
+  type FriendlySchedule,
+} from '@frontrangesystems/business-os-agent-sdk';
 import { requireUser, requireRole } from './_require-user.js';
 import { zodToFieldSchema } from '../zod-form.js';
 import { AGENT_REFRESH_CHANNEL } from '../agent-refresh.js';
@@ -116,16 +123,19 @@ const AGENT_SCHEDULE_SCOPE = (slug: string): string => `agent-schedule:${slug}`;
 const CONNECTOR_EVENT_SUB_SCOPE = (instanceId: string, topic: string): string =>
   `connector-event-sub:${instanceId}:${topic}`;
 
-type ScheduleOverride =
-  | { kind: 'manual' }
-  | { kind: 'cron'; expr: string }
-  | { kind: 'event'; topic: string };
+/**
+ * The schedule override stored per-install is now the human-readable
+ * `FriendlySchedule` (interval / daily / weekly / manual / event, plus a raw
+ * cron escape hatch). The friendly kinds are translated to cron by the runtime;
+ * the operator never sees a raw expression in the primary UI.
+ *
+ * Backward-compat: legacy overrides were persisted as `{kind:'cron',expr}` /
+ * `{kind:'manual'}` / `{kind:'event',topic}`. Those are a strict subset of the
+ * friendly union, so they continue to validate + load unchanged.
+ */
+type ScheduleOverride = FriendlySchedule;
 
-const ScheduleOverrideSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('manual') }),
-  z.object({ kind: z.literal('cron'), expr: z.string().min(1) }),
-  z.object({ kind: z.literal('event'), topic: z.string().min(1) }),
-]);
+const ScheduleOverrideSchema = FriendlyScheduleSchema;
 
 async function loadScheduleOverride(db: Db, slug: string): Promise<ScheduleOverride | null> {
   const rows = await db
@@ -137,6 +147,17 @@ async function loadScheduleOverride(db: Db, slug: string): Promise<ScheduleOverr
   if (!v) return null;
   const parsed = ScheduleOverrideSchema.safeParse(v);
   return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Map a schedule's `kind` to the manifest-level trigger kind it satisfies, for
+ * the `supportedTriggers` gate. The friendly time-based kinds (interval / daily
+ * / weekly) and the raw `cron` escape hatch all count as the `'cron'` trigger.
+ */
+function triggerKindOf(kind: FriendlySchedule['kind']): 'cron' | 'manual' | 'event' {
+  if (kind === 'manual') return 'manual';
+  if (kind === 'event') return 'event';
+  return 'cron';
 }
 
 async function isProviderEnabled(db: Db, cap: string, slug: string): Promise<boolean> {
@@ -402,6 +423,13 @@ export function registerAdminRoutes(app: FastifyInstance): void {
           .where(eq(agentRuns.agentSlug, manifest.slug))
           .orderBy(desc(agentRuns.startedAt))
           .limit(1);
+        // Effective schedule = operator override (friendly) ?? manifest. Expose
+        // it in friendly form + a human label so the list never renders a raw
+        // cron expression or the word "cron".
+        const override = await loadScheduleOverride(req.deps.db, manifest.slug);
+        const effective: FriendlySchedule = override ?? manifest.schedule;
+        const effectiveFriendly: FriendlySchedule =
+          effective.kind === 'cron' ? cronToFriendly(effective.expr) ?? effective : effective;
         return {
           slug: manifest.slug,
           version: manifest.version,
@@ -409,6 +437,8 @@ export function registerAdminRoutes(app: FastifyInstance): void {
           description: manifest.description,
           requiredConnectors: manifest.requiredConnectors,
           schedule: manifest.schedule,
+          effectiveSchedule: effectiveFriendly,
+          scheduleDescription: describeSchedule(effectiveFriendly),
           settings: settingsValue,
           /**
            * Surface the input schema (when present) so the Agents list can
@@ -615,10 +645,22 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         availableEventTopics.push({ topic, displayName: def.displayName, via: row.providerSlug });
       }
     }
+    // Translate everything to the friendly representation for the UI. A
+    // manifest may declare a raw cron expr (`{kind:'cron',expr}`); surface it as
+    // its recognised friendly kind when possible so the UI shows friendly
+    // controls, falling back to the cron escape hatch otherwise.
+    const toFriendly = (s: FriendlySchedule): FriendlySchedule =>
+      s.kind === 'cron' ? cronToFriendly(s.expr) ?? s : s;
+    const manifestFriendly = toFriendly(agent.manifest.schedule);
+    const overrideFriendly = override ? toFriendly(override) : null;
+    const effectiveFriendly = toFriendly(effective);
+    const next = nextRun(effectiveFriendly);
     return {
-      manifest: agent.manifest.schedule,
-      override,
-      effective,
+      manifest: manifestFriendly,
+      override: overrideFriendly,
+      effective: effectiveFriendly,
+      description: describeSchedule(effectiveFriendly),
+      nextRunAt: next ? next.toISOString() : null,
       supportedTriggers: Array.from(new Set(supportedTriggers)),
       availableEventTopics,
     };
@@ -649,13 +691,15 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const next = body.data.override;
     if (next) {
       // Gate against supportedTriggers — operator can't pick a kind the
-      // agent's author didn't list.
+      // agent's author didn't list. The friendly time-based kinds (interval /
+      // daily / weekly) and the cron escape hatch all map to the 'cron' trigger.
       const supported =
         agent.manifest.supportedTriggers ?? [agent.manifest.schedule.kind, 'manual' as const];
-      if (!supported.includes(next.kind)) {
+      const triggerKind = triggerKindOf(next.kind);
+      if (!supported.includes(triggerKind)) {
         reply.code(400).send({
           error: 'unsupported_trigger',
-          message: `agent doesn't support trigger kind "${next.kind}"`,
+          message: `agent doesn't support trigger kind "${triggerKind}"`,
         });
         return;
       }

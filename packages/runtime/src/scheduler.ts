@@ -3,6 +3,10 @@ import { eq } from 'drizzle-orm';
 import type { Logger } from 'pino';
 import { settings as settingsTable, type Db } from '@frontrangesystems/business-os-db';
 import { AGENT_REFRESH_CHANNEL } from '@frontrangesystems/business-os-core';
+import {
+  friendlyToCron,
+  type FriendlySchedule,
+} from '@frontrangesystems/business-os-agent-sdk';
 import type { Registry } from './registry.js';
 import type { ConnectorResolver } from './active-connectors.js';
 import { runAgent, type RunTrigger } from './run.js';
@@ -21,10 +25,53 @@ export interface AgentRefreshListener {
   ): Promise<{ unlisten(): Promise<void> }>;
 }
 
-type AgentScheduleOverride =
-  | { kind: 'manual' }
-  | { kind: 'cron'; expr: string }
-  | { kind: 'event'; topic: string };
+/**
+ * The operator-set override is now stored as a `FriendlySchedule` (interval /
+ * daily / weekly / manual / event, plus a raw-cron escape hatch). Older
+ * installs may still have a raw `{ kind: 'cron', expr }` row persisted — that's
+ * a valid FriendlySchedule kind, so it parses + schedules unchanged
+ * (backward-compatible).
+ */
+type AgentScheduleOverride = FriendlySchedule;
+
+/**
+ * Parse a stored override value into a `FriendlySchedule`, tolerating the
+ * legacy shapes (`{kind:'manual'}`, `{kind:'cron',expr}`, `{kind:'event',topic}`)
+ * which are a strict subset of the friendly union. Returns `null` for anything
+ * unrecognised so a junk row never crashes the scheduler.
+ */
+function parseOverride(value: unknown): AgentScheduleOverride | null {
+  if (!value || typeof value !== 'object') return null;
+  const o = value as {
+    kind?: string;
+    expr?: string;
+    topic?: string;
+    every?: string;
+    n?: number;
+    at?: string;
+    day?: number;
+  };
+  switch (o.kind) {
+    case 'manual':
+      return { kind: 'manual' };
+    case 'cron':
+      return typeof o.expr === 'string' ? { kind: 'cron', expr: o.expr } : null;
+    case 'event':
+      return typeof o.topic === 'string' ? { kind: 'event', topic: o.topic } : null;
+    case 'interval':
+      return (o.every === 'minute' || o.every === 'hour') && typeof o.n === 'number'
+        ? { kind: 'interval', every: o.every, n: o.n }
+        : null;
+    case 'daily':
+      return typeof o.at === 'string' ? { kind: 'daily', at: o.at } : null;
+    case 'weekly':
+      return typeof o.day === 'number' && typeof o.at === 'string'
+        ? { kind: 'weekly', day: o.day, at: o.at }
+        : null;
+    default:
+      return null;
+  }
+}
 
 /**
  * Read both the operator-set override (`agent-schedule:<slug>`) and the
@@ -42,14 +89,7 @@ async function readScheduleState(
   for (const r of rows) byScope.set(r.scope, r.value);
   const enabledRow = byScope.get(`agent-enabled:${slug}`) as { enabled?: boolean } | undefined;
   const enabled = enabledRow?.enabled === true;
-  const overrideRow = byScope.get(`agent-schedule:${slug}`);
-  let override: AgentScheduleOverride | null = null;
-  if (overrideRow && typeof overrideRow === 'object') {
-    const o = overrideRow as { kind?: string; expr?: string; topic?: string };
-    if (o.kind === 'manual') override = { kind: 'manual' };
-    else if (o.kind === 'cron' && typeof o.expr === 'string') override = { kind: 'cron', expr: o.expr };
-    else if (o.kind === 'event' && typeof o.topic === 'string') override = { kind: 'event', topic: o.topic };
-  }
+  const override = parseOverride(byScope.get(`agent-schedule:${slug}`));
   return { enabled, override };
 }
 
@@ -163,18 +203,33 @@ export class Scheduler {
     }
     const state = await readScheduleState(this.deps.db, slug);
     if (!state.enabled) return; // disabled agents stay idle
-    const s = state.override ?? agent.manifest.schedule;
-    if (s.kind === 'cron') {
-      const cron = new Cron(s.expr, { timezone: 'UTC', protect: true }, async () => {
-        await this.fireRun(slug, undefined, { kind: 'cron', detail: s.expr });
-      });
-      this.crons.set(slug, cron);
-    } else if (s.kind === 'event') {
+    // Effective schedule = operator override (a FriendlySchedule) ?? the
+    // manifest's declared schedule (the SDK AgentSchedule, a strict subset of
+    // the friendly union). Either way we resolve it to a single cron expression
+    // for time-based kinds; manual/event are handled separately.
+    const s: FriendlySchedule = state.override ?? agent.manifest.schedule;
+    if (s.kind === 'manual') {
+      // nothing to do; operator drives via /run.
+      return;
+    }
+    if (s.kind === 'event') {
       const list = this.eventSubs.get(s.topic) ?? [];
       list.push(slug);
       this.eventSubs.set(s.topic, list);
+      return;
     }
-    // manual — nothing to do; operator drives via /run.
+    // interval / daily / weekly / cron all resolve to a cron expression.
+    let expr: string;
+    try {
+      expr = friendlyToCron(s);
+    } catch (err) {
+      this.deps.logger.error({ err, slug, schedule: s }, 'scheduler.invalid_schedule');
+      return;
+    }
+    const cron = new Cron(expr, { timezone: 'UTC', protect: true }, async () => {
+      await this.fireRun(slug, undefined, { kind: 'cron', detail: expr });
+    });
+    this.crons.set(slug, cron);
   }
 
   async stop(): Promise<void> {

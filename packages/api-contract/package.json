@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-api-contract",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Zod request/response schemas shared by core, UI, and any 3rd-party client.",
   "type": "module",
   "main": "./dist/index.js",
