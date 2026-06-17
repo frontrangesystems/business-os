@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import fastifyMultipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { Db } from '@frontrangesystems/business-os-db';
@@ -129,6 +130,23 @@ export function buildApp(deps: AppDeps): FastifyInstance & { deps: AppDeps } {
   app.addHook('onSend', async (req, reply, payload) => {
     reply.header('x-request-id', req.requestId);
     return payload;
+  });
+
+  // Multipart/form-data support is a framework capability — any module route
+  // can stream a file via `req.file()` / `req.parts()`. The plugin only engages
+  // on a `multipart/form-data` content-type, so JSON routes are unaffected.
+  // Limits are tuned for large bid PDFs (e.g. an 81 MB scanned plan set):
+  // fileSize ~110 MB headroom above the module's ~100 MB cap; field counts kept
+  // tiny since we only expect a single file part plus an optional filename.
+  // We do NOT set `attachFieldsToBody` — routes consume the stream directly so
+  // the file is never fully buffered in memory.
+  void app.register(fastifyMultipart, {
+    limits: {
+      fileSize: 110 * 1024 * 1024,
+      files: 1,
+      fields: 4,
+      fieldSize: 1024,
+    },
   });
 
   app.get('/healthz', async () => ({ ok: true }));

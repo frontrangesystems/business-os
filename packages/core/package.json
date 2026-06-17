@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-core",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Fastify server, auth, audit log, secrets, settings — the framework's runnable spine.",
   "type": "module",
   "main": "./dist/index.js",
@@ -43,6 +43,7 @@
   "dependencies": {
     "@frontrangesystems/business-os-api-contract": "workspace:^",
     "@frontrangesystems/business-os-db": "workspace:^",
+    "@fastify/multipart": "^8.3.1",
     "@fastify/static": "^7.0.4",
     "@sentry/node": "^8.32.0",
     "argon2": "^0.41.0",

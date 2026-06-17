@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-agent-prospecting",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Per-company research note + first-touch outreach draft, optionally sent via the active email connector.",
   "type": "module",
   "main": "./dist/index.js",
