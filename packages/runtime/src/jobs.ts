@@ -77,11 +77,31 @@ export function createJobsBackend(deps: JobsDeps): JobsBackend {
   // True once consumers (agent-routing + custom subscribers) are registered.
   // An enqueue-only start connects pg-boss but leaves this false.
   let workersRegistered = false;
+  // Queues we've already ensured this process. pg-boss v10 requires a queue to
+  // exist (createQueue) before send() or work() — otherwise send() returns null
+  // (no job created) and work() polls nothing. We create lazily + idempotently.
+  const ensuredQueues = new Set<string>();
+
+  async function ensureQueue(name: string): Promise<void> {
+    if (ensuredQueues.has(name)) return;
+    try {
+      // Idempotent in normal use; tolerate a concurrent create from the other
+      // process (api enqueues while worker registers) racing on the same queue.
+      await boss.createQueue(name);
+    } catch (err) {
+      deps.logger.debug(
+        { name, err: (err as Error).message },
+        'jobs.ensureQueue.ignored',
+      );
+    }
+    ensuredQueues.add(name);
+  }
 
   async function registerAllWorkers(): Promise<void> {
     // Register agent-routing worker for every agent slug in the registry.
     for (const agent of deps.registry.listAgents()) {
       const slug = agent.manifest.slug;
+      await ensureQueue(slug);
       await boss.work<unknown>(slug, async (jobs) => {
         for (const job of jobs) {
           await runAgent(
@@ -99,6 +119,7 @@ export function createJobsBackend(deps: JobsDeps): JobsBackend {
       });
     }
     for (const [name, handler] of customHandlers) {
+      await ensureQueue(name);
       await registerCustomHandler(boss, name, handler);
     }
     workersRegistered = true;
@@ -113,6 +134,10 @@ export function createJobsBackend(deps: JobsDeps): JobsBackend {
       // Auto-connect enqueue-only if nobody started us yet — never implicitly
       // register workers from inside an enqueue.
       if (!started) await this.start({ withWorkers: false });
+      // pg-boss v10: the queue must exist before send() or the job is silently
+      // dropped (send returns null). Create it here so an API-process enqueue
+      // works even before the worker process has registered its consumer.
+      await ensureQueue(name);
       const sendOpts: PgBoss.SendOptions = {};
       if (opts?.delayMs && opts.delayMs > 0) {
         sendOpts.startAfter = Math.ceil(opts.delayMs / 1000);
@@ -122,12 +147,20 @@ export function createJobsBackend(deps: JobsDeps): JobsBackend {
       }
       const id = await boss.send(name, payload as object, sendOpts);
       if (!id) {
-        // pg-boss returns null when a singletonKey collides with an existing job.
-        deps.logger.info(
-          { name, idempotencyKey: opts?.idempotencyKey },
-          'jobs.enqueue.deduped',
+        if (opts?.idempotencyKey) {
+          // Expected: a singletonKey collided with an existing job.
+          deps.logger.info(
+            { name, idempotencyKey: opts.idempotencyKey },
+            'jobs.enqueue.deduped',
+          );
+          return `deduped:${opts.idempotencyKey}`;
+        }
+        // No idempotency key yet pg-boss created no job. With ensureQueue() above
+        // this should not happen — surface it instead of silently pretending the
+        // job was enqueued (the exact masking that hid the missing-queue bug).
+        throw new Error(
+          `jobs.enqueue: pg-boss created no job for queue '${name}' (no idempotencyKey)`,
         );
-        return `deduped:${opts?.idempotencyKey ?? ''}`;
       }
       return id;
     },
@@ -136,6 +169,7 @@ export function createJobsBackend(deps: JobsDeps): JobsBackend {
       customHandlers.set(name, handler);
       if (workersRegistered) {
         // Late subscription on a worker process — register immediately.
+        await ensureQueue(name);
         await registerCustomHandler(boss, name, handler);
       }
     },
