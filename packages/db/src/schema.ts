@@ -65,6 +65,53 @@ export const sessions = pgTable(
   }),
 );
 
+// -----------------------------------------------------------------------------
+// user_roles — many-to-many between users and the app-level role set
+// -----------------------------------------------------------------------------
+
+/**
+ * Roles a user holds. Many-to-many: a user can hold zero, one, or both of the
+ * app-level roles (admin + estimator — see ROLES below).
+ *
+ * V1 keeps roles as an app-level constant set (ROLES), NOT a separate `roles`
+ * table — `role` is just a free-text column validated at the application layer.
+ * If roles ever become data-driven (operator-defined roles, descriptions,
+ * etc.), a `roles` table + FK can come later without dropping this one.
+ */
+export const userRoles = pgTable(
+  'user_roles',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.role] }),
+    userIdx: index('user_roles_user_idx').on(t.userId),
+  }),
+);
+
+/**
+ * App-level role set for V1. These are the only valid values for
+ * `user_roles.role`. Not a DB enum (keeps adding a role a code change with no
+ * migration) — validated at the application layer.
+ */
+export const ROLES = {
+  ADMIN: 'admin',
+  ESTIMATOR: 'estimator',
+} as const;
+
+export type Role = (typeof ROLES)[keyof typeof ROLES];
+
+/** All known roles, for validation. */
+export const ALL_ROLES: readonly Role[] = [ROLES.ADMIN, ROLES.ESTIMATOR];
+
+export function isKnownRole(value: string): value is Role {
+  return (ALL_ROLES as readonly string[]).includes(value);
+}
+
 export const passwordResetTokens = pgTable(
   'password_reset_tokens',
   {
@@ -226,6 +273,8 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
+export type UserRole = typeof userRoles.$inferSelect;
+export type NewUserRole = typeof userRoles.$inferInsert;
 export type Secret = typeof secrets.$inferSelect;
 export type NewSecret = typeof secrets.$inferInsert;
 export type AuditLogRow = typeof auditLog.$inferSelect;

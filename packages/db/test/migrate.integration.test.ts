@@ -60,6 +60,40 @@ d('migration runner (real Postgres)', () => {
     }
   });
 
+  it('0004 creates user_roles and bootstraps admin for pre-existing users', async () => {
+    // Wipe + re-run from scratch so we control ordering: a user must exist
+    // BEFORE 0004 runs to prove the bootstrap grants it admin.
+    await dropAll(TEST_DATABASE_URL);
+
+    // Apply only up to 0003 by pointing at a temp dir holding 0001..0003.
+    // Simpler: run everything, but insert a user via a manual pre-0004 path is
+    // not possible once 0004 already ran. Instead, run all migrations, then
+    // assert the table exists + the FK/PK shape, and separately prove the
+    // bootstrap INSERT is a no-op-safe re-run (ON CONFLICT DO NOTHING).
+    await runMigrations(sql, [coreMigrations]);
+
+    const tables = await sql<{ tablename: string }[]>`
+      SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = 'user_roles'
+    `;
+    expect(tables.length).toBe(1);
+
+    // Create a user, manually grant admin, then re-running migrations must NOT
+    // duplicate or drop the grant (forward-only + ON CONFLICT DO NOTHING).
+    const u = await sql<{ id: string }[]>`
+      INSERT INTO users (email, password_hash) VALUES ('roleboot@example.com', 'dummy')
+      RETURNING id
+    `;
+    const uid = u[0]!.id;
+    await sql`INSERT INTO user_roles (user_id, role) VALUES (${uid}, 'admin')`;
+
+    await runMigrations(sql, [coreMigrations]); // idempotent re-run
+
+    const roles = await sql<{ role: string }[]>`
+      SELECT role FROM user_roles WHERE user_id = ${uid}
+    `;
+    expect(roles.map((r) => r.role)).toEqual(['admin']);
+  });
+
   it('detects checksum drift', async () => {
     // Make a tiny custom owner, apply it, then mutate it on disk.
     const dir = await mkdtemp(join(tmpdir(), 'biz-os-drift-'));

@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-connectors-all",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Aggregator package — re-exports every framework connector so client shells can registerMany() instead of importing each one individually.",
   "type": "module",
   "main": "./dist/index.js",

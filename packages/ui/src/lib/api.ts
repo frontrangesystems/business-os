@@ -59,9 +59,20 @@ export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Pr
 export type Theme = 'light' | 'dark' | 'system';
 
 export interface Me {
-  user: { id: string; email: string } | null;
+  user: { id: string; email: string; roles: string[]; displayName?: string | null } | null;
   totpEnrolled?: boolean;
   preferences?: { theme: Theme };
+}
+
+/** Audience tag as sent by the server (V1: everyone | admins). */
+export type WireAudience = { kind: 'everyone' } | { kind: 'admins' };
+
+export interface ManagedUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+  isActive: boolean;
+  roles: string[];
 }
 
 export interface TotpEnrollResponse {
@@ -171,11 +182,31 @@ export const Api = {
         version: string;
         displayName: string;
         description: string;
-        uiPages: Array<{ path: string; navLabel?: string }>;
+        defaultAudience?: WireAudience;
+        uiPages: Array<{ path: string; navLabel?: string; audience?: WireAudience }>;
         settings: unknown;
         settingsSchema: unknown;
       }>;
     }>('/api/modules'),
+
+  // ----- User management (admin-only on the server) -----
+  listUsers: () => api<{ users: ManagedUser[] }>('/api/users'),
+  createUser: (body: {
+    email: string;
+    displayName?: string;
+    password: string;
+    roles?: string[];
+  }) => api<{ user: ManagedUser }>('/api/users', { method: 'POST', body }),
+  setUserRoles: (id: string, roles: string[]) =>
+    api<{ ok: true; roles: string[] }>(`/api/users/${id}/roles`, {
+      method: 'PATCH',
+      body: { roles },
+    }),
+  updateUser: (id: string, body: { isActive?: boolean; displayName?: string }) =>
+    api<{ ok: true; user: ManagedUser }>(`/api/users/${id}`, {
+      method: 'PATCH',
+      body,
+    }),
 
   getDashboard: () =>
     api<{

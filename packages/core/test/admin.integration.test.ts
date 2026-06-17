@@ -10,7 +10,7 @@ import type {
   ExternalOAuthBrokerLike,
 } from '../src/inventory.js';
 import { freshDb, pgReachable, TEST_DATABASE_URL } from './_db.js';
-import { settings } from '@frontrangesystems/business-os-db';
+import { settings, userRoles } from '@frontrangesystems/business-os-db';
 
 const reachable = await pgReachable(TEST_DATABASE_URL);
 const d = reachable ? describe : describe.skip;
@@ -158,10 +158,13 @@ d('admin/operator API (real Postgres)', () => {
       externalOAuthBrokers: { composio: broker },
     });
     await app.ready();
-    await createUser(env.db, {
+    const op = await createUser(env.db, {
       email: 'op@example.com',
       password: 'correct-horse-battery-staple',
     });
+    // Admin-write routes are now requireRole('admin')-gated — grant the test
+    // operator the admin role so the write-path assertions below still pass.
+    await env.db.insert(userRoles).values({ userId: op.id, role: 'admin' });
     // Log in once and reuse the cookie across tests.
     const login = await app.inject({
       method: 'POST',
