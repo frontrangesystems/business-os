@@ -7,7 +7,7 @@ import {
   type MigrationOwner,
 } from '@frontrangesystems/business-os-db';
 import { sql as sqlOp } from 'drizzle-orm';
-import { pino } from 'pino';
+import { pino, type Logger } from 'pino';
 import { buildApp, type AppDeps } from '../app.js';
 import { registerModuleRoutes, registerModuleBackgroundWorkers } from '../modules.js';
 import { createSecretsStore, loadSecretsKey } from '../secrets/index.js';
@@ -104,6 +104,16 @@ export async function startServer(opts: StartServerOpts): Promise<StartedServer>
   const env = parseEnv(opts.env);
   const mode: StartMode = opts.mode ?? (env.NODE_ENV === 'development' ? 'both' : 'api');
 
+  // Boot/worker-process structured logger. The API process logs through
+  // Fastify's request-scoped `req.log`; everything that happens outside a
+  // request (migrations, brownfield seed, worker registration, worker-only
+  // mode) logs here. Pre-tagged with client_slug so every boot line matches the
+  // convention; child loggers add module_slug etc.
+  const log = pino({
+    level: env.LOG_LEVEL,
+    base: { client_slug: env.CLIENT_SLUG },
+  });
+
   const { db, sql } = createDb({ url: env.DATABASE_URL });
 
   // Module migration owners discovered from the inventory — each registered
@@ -129,10 +139,12 @@ export async function startServer(opts: StartServerOpts): Promise<StartedServer>
   ];
   const applied = await runMigrations(sql, owners);
   if (applied.applied.length > 0) {
-    // eslint-disable-next-line no-console
-    console.log(
-      `[startServer] applied ${applied.applied.length} migration(s): ` +
-        applied.applied.map((a) => `${a.owner}/${a.name}`).join(', '),
+    log.info(
+      {
+        count: applied.applied.length,
+        migrations: applied.applied.map((a) => `${a.owner}/${a.name}`),
+      },
+      'migrations.applied',
     );
   }
 
@@ -145,7 +157,7 @@ export async function startServer(opts: StartServerOpts): Promise<StartedServer>
   // everything. Fresh installs (no runs, no enable rows) skip this and the
   // operator picks via Add Agent. Idempotent via a meta sentinel.
   if (opts.inventory) {
-    await seedAgentEnabledIfNeeded(db, opts.inventory);
+    await seedAgentEnabledIfNeeded(db, opts.inventory, log);
   }
 
   const trigger = opts.triggerFactory?.({
@@ -168,9 +180,7 @@ export async function startServer(opts: StartServerOpts): Promise<StartedServer>
   // jobs backend (subscribeJob). In api-only mode we skip this entirely so the
   // API process never runs consumers (it only enqueues).
   if ((mode === 'worker' || mode === 'both') && trigger) {
-    const workerLogger = pino({ level: env.LOG_LEVEL }).child({
-      client_slug: env.CLIENT_SLUG,
-    });
+    const workerLogger = log;
     try {
       await registerModuleBackgroundWorkers({
         db,
@@ -218,8 +228,7 @@ export async function startServer(opts: StartServerOpts): Promise<StartedServer>
     url = `http://0.0.0.0:${env.API_PORT}`;
     app.log.info({ mode, port: env.API_PORT }, 'business-os: api listening');
   } else {
-    // eslint-disable-next-line no-console
-    console.log(`[startServer] worker-only mode; scheduler running`);
+    log.info({ mode }, 'worker-only mode; scheduler running');
   }
 
   let stopped = false;
@@ -246,6 +255,7 @@ const AGENT_SEED_MARKER_SCOPE = 'meta:agent-enabled-seeded';
 async function seedAgentEnabledIfNeeded(
   db: ReturnType<typeof createDb>['db'],
   inventory: AgentInventory,
+  log: Logger,
 ): Promise<void> {
   // Idempotent: once we set the marker, never seed again, even if an operator
   // disables everything and the system ends up looking like a fresh install.
@@ -284,6 +294,5 @@ async function seedAgentEnabledIfNeeded(
       value: { at: new Date().toISOString(), seeded: slugs.length },
     })
     .onConflictDoNothing();
-  // eslint-disable-next-line no-console
-  console.log(`[startServer] auto-enabled ${slugs.length} agent(s) on brownfield boot`);
+  log.info({ count: slugs.length }, 'agent.brownfield_enabled');
 }

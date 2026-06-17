@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-connector-crm-stub",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Dev/demo provider for the crm capability — stores contacts in a local table.",
   "type": "module",
   "main": "./dist/index.js",

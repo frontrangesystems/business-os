@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-connector-email-inbox-outlook-composio",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Outlook provider for the email-inbox capability, backed by Composio.",
   "type": "module",
   "main": "./dist/index.js",

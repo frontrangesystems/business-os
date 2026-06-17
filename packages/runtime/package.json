@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-runtime",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Boots agents: registry, ctx factory, runAgent, scheduler entrypoint.",
   "type": "module",
   "main": "./dist/index.js",

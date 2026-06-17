@@ -110,6 +110,14 @@ export function buildApp(deps: AppDeps): FastifyInstance & { deps: AppDeps } {
     logger: loggerOpt as FastifyServerOptions['logger'],
     genReqId: (req) =>
       (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
+    // Name the request-id field `request_id` everywhere (Fastify defaults to
+    // `reqId`) so it matches the logging convention: every line carries
+    // client_slug + request_id + user_id + agent_slug/module_slug.
+    requestIdLogLabel: 'request_id',
+    // Silence Fastify's built-in two-lines-per-request logging; we emit a single
+    // structured access line in the onResponse hook below (with user_id +
+    // response time, and level keyed off the status code).
+    disableRequestLogging: true,
     trustProxy: true,
   };
   const app = Fastify(opts);
@@ -131,6 +139,25 @@ export function buildApp(deps: AppDeps): FastifyInstance & { deps: AppDeps } {
   app.addHook('onSend', async (req, reply, payload) => {
     reply.header('x-request-id', req.requestId);
     return payload;
+  });
+
+  // Single structured access-log line per request. `req.log` already carries
+  // client_slug + request_id (and user_id once requireUser has run); we add the
+  // request shape, status, and elapsed time. Level tracks the status class so a
+  // 5xx surfaces at error and a 4xx at warn. Health/readiness probes are skipped
+  // — Fly hits them constantly and they'd drown the real traffic.
+  app.addHook('onResponse', async (req, reply) => {
+    if (req.url === '/healthz' || req.url === '/readyz') return;
+    const line = {
+      method: req.method,
+      url: req.url,
+      statusCode: reply.statusCode,
+      responseTimeMs: Math.round(reply.elapsedTime),
+      user_id: req.user?.id ?? null,
+    };
+    if (reply.statusCode >= 500) req.log.error(line, 'request.completed');
+    else if (reply.statusCode >= 400) req.log.warn(line, 'request.completed');
+    else req.log.info(line, 'request.completed');
   });
 
   // Multipart/form-data support is a framework capability — any module route
