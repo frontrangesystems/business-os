@@ -12,7 +12,7 @@ A framework and a library of pluggable agents that Matt's team installs once per
 
 Not a SaaS. Not multi-tenant. Each engagement is a high-ticket professional services build (target: $500K+) where the client owns the outcome and we own the speed of delivery.
 
-The reference architecture (Lior Krolewicz's Master Key OS) proved buyers will pay this level for a real business OS that absorbs the messy work their people do today. We're building independently, not as a Master Key implementer.
+The reference architecture (Lior Krolewicz's Master Key OS) proved buyers will pay this level for a real business OS that absorbs the messy work their people do today. We're building independently, not as a Master Key implementer. The category is real and competitive — e.g. James Black Consulting's ["AI OS Install"](https://jamesblackconsulting.com/ai-os-install) sells the same outcome (a per-client OS that "removes the founder as the bottleneck"). The consistent takeaway: the value isn't the automations, it's a trustworthy *decision layer* — agents that act with the human kept in control.
 
 ## Why
 
@@ -98,6 +98,17 @@ Why hybrid: pure starter-template means every framework upgrade is a per-client 
 - **No low-code.** Same reason.
 - **No self-service signup.** Engagements start with a sales conversation, end with a deployed instance.
 - **Runtime config goes in the DB, not files.** Credentials, schedules, on/off, per-agent settings live in the settings UI. Files only declare what's installed.
+
+## What we're building next — the decision layer
+
+The framework today runs agents and records what they did. The capability that turns that into a system a client trusts to act on their behalf — and the one the whole category sells — is the **decision layer**: agents propose, humans approve, agents proceed. Priority order:
+
+1. **Human-in-the-loop approval inbox (P0).** An agent proposes an action (send this email, submit this) → it lands in an operator inbox → a human approves, edits, or rejects → the agent proceeds. Audited end to end. This is the missing primitive behind the "draft + approve" mode the operator section already promises; without it no client trusts an agent to touch a customer. It's the difference between this product and a cron job.
+2. **End-to-end workflow orchestration (P1).** Chain agents + connectors + an approval gate into one live workflow with shared state and a whole-flow view. Code-defined — never a visual builder (see Constraints).
+3. **Notifications / escalations (P1).** An agent reaches a human (email/Slack/SMS) when it needs input or hits a milestone. An approval inbox nobody is pinged about is useless.
+4. **Cross-agent activity feed (P2).** One place to answer "what did the OS do this week, and what's waiting on me." Builds on the per-agent run history we already have.
+
+First proof: take **Lead Gen** fully end-to-end — trigger → enrich → draft outreach → human approves in the inbox → send → log. That single workflow forces these primitives into existence and is the demo that sells the install.
 
 ## Success criteria
 
