@@ -36,6 +36,15 @@ export interface AgentManifest<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
   /** When the runtime should invoke the agent */
   schedule: AgentSchedule;
   /**
+   * Named, side-effecting operations this agent can perform — the decision
+   * layer (docs/specs/2026-06-24-decision-layer.md). Each is a pure executor:
+   * given a payload, do the thing. The agent calls `ctx.proposeAction(kind, …)`
+   * during `run`; the framework decides — based on the agent's autonomy level
+   * and the action's `risk` — whether to execute it inline or park it in the
+   * approval inbox for a human. Omit for agents that never take actions.
+   */
+  actions?: Record<string, ActionDefinition<z.infer<TSettings>>>;
+  /**
    * Which trigger kinds the operator is allowed to switch the agent to.
    * Defaults to `[<schedule.kind>, 'manual']` — i.e. the manifest's
    * declared trigger plus always-allowed manual. Set explicitly to widen
@@ -46,6 +55,49 @@ export interface AgentManifest<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
    * The runtime checks this list when applying an override.
    */
   supportedTriggers?: ReadonlyArray<'cron' | 'manual' | 'event'>;
+}
+
+/** How much an agent is trusted to act on its own — the decision-layer dial. */
+export type AutonomyLevel = 'L0' | 'L1' | 'L2' | 'L3';
+
+/** Risk class of an action; drives the L2 auto-approve threshold. */
+export type ActionRisk = 'low' | 'medium' | 'high';
+
+/**
+ * The framework-managed autonomy setting for an agent. Stored alongside the
+ * agent's own settings under the `_autonomy` key; agents never define it (the
+ * framework injects the control). See AutonomyLevel for the ladder.
+ *   L0 Observe · L1 Draft+approve · L2 Act+notify (≤ riskThreshold) · L3 Autonomous
+ */
+export interface AutonomySettings {
+  level: AutonomyLevel;
+  /** At L2, actions with risk ≤ this execute automatically; above it, park. */
+  riskThreshold?: ActionRisk;
+}
+
+/** Default for any agent with no autonomy configured: supervised (HITL). */
+export const DEFAULT_AUTONOMY: AutonomySettings = { level: 'L1', riskThreshold: 'low' };
+
+/**
+ * A named, side-effecting operation an agent can perform. `run` is a pure
+ * executor — the framework decides WHEN it runs (inline vs after approval).
+ * `payload` arrives as `unknown` (it round-trips through the DB as JSON); the
+ * handler narrows it.
+ */
+export interface ActionDefinition<TSettings = unknown> {
+  /** Risk class — compared against the agent's L2 threshold. */
+  risk: ActionRisk;
+  /** One-line description, shown in the approval inbox. */
+  description?: string;
+  run: (ctx: AgentContext<TSettings>, payload: unknown) => Promise<unknown>;
+}
+
+/** Outcome of `ctx.proposeAction`. */
+export interface ProposeActionResult {
+  /** True if the action ran inline (autonomous); false if parked/observed. */
+  executed: boolean;
+  /** Set when the action was parked for approval — the pending_actions row id. */
+  pendingId?: string;
 }
 
 /**
@@ -76,6 +128,19 @@ export interface AgentContext<TSettings = unknown> {
   db: unknown; // typed once @frontrangesystems/business-os-db is in place
   /** Write an audit-log row */
   audit(action: string, meta?: Record<string, unknown>): Promise<void>;
+  /**
+   * Propose one of the agent's declared `manifest.actions`. Based on the
+   * agent's autonomy level + the action's risk, the framework either runs the
+   * action's handler inline (L3, or L2 at/below the risk threshold) or parks a
+   * pending_actions row for human approval (L1, or L2 above threshold). At L0
+   * it only records the intent and never executes. The decision layer — see
+   * docs/specs/2026-06-24-decision-layer.md.
+   */
+  proposeAction(
+    kind: string,
+    payload: unknown,
+    opts: { summary: string },
+  ): Promise<ProposeActionResult>;
   /** Enqueue a follow-up job (handled by the same agent or another) */
   jobs: {
     enqueue(name: string, payload: unknown, opts?: EnqueueOpts): Promise<string>;
