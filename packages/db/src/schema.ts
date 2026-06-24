@@ -247,6 +247,49 @@ export const agentRuns = pgTable(
 );
 
 // -----------------------------------------------------------------------------
+// pending actions — the decision layer (HITL approval queue)
+// -----------------------------------------------------------------------------
+
+/**
+ * One row per action an agent PROPOSES. Per its autonomy level the framework
+ * either executes the action immediately (recording an 'executed' row for the
+ * audit trail) or parks it here as 'pending' for a human to approve/reject in
+ * the operator's Approvals inbox. See docs/specs/2026-06-24-decision-layer.md.
+ *
+ * `ownerUserId` is null for org/shared scope; it is set once per-user connector
+ * scoping lands, so a personal-inbox action belongs to that user.
+ */
+export const pendingActions = pgTable(
+  'pending_actions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agentSlug: text('agent_slug').notNull(),
+    /** The run that proposed it (correlation to agent_runs / logs). */
+    runId: uuid('run_id'),
+    /** Matches a key in the agent manifest's `actions` map. */
+    actionKind: text('action_kind').notNull(),
+    payload: jsonb('payload').notNull().default({}),
+    /** Human-readable, shown in the approval inbox. */
+    summary: text('summary').notNull(),
+    /** low | medium | high — drives the L2 auto-approve threshold. */
+    risk: text('risk').notNull().default('medium'),
+    /** pending | approved | rejected | executed | failed */
+    status: text('status').notNull().default('pending'),
+    ownerUserId: uuid('owner_user_id').references(() => users.id, { onDelete: 'set null' }),
+    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    executedAt: timestamp('executed_at', { withTimezone: true }),
+    /** Handler result, or error detail on 'failed'. */
+    result: jsonb('result'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    statusAgentIdx: index('pending_actions_status_agent_idx').on(t.status, t.agentSlug),
+    createdIdx: index('pending_actions_created_idx').on(t.createdAt),
+  }),
+);
+
+// -----------------------------------------------------------------------------
 // migrations — applied migration tracking, owned by @frontrangesystems/business-os-db
 // -----------------------------------------------------------------------------
 
@@ -281,4 +324,6 @@ export type AuditLogRow = typeof auditLog.$inferSelect;
 export type NewAuditLogRow = typeof auditLog.$inferInsert;
 export type AgentRun = typeof agentRuns.$inferSelect;
 export type NewAgentRun = typeof agentRuns.$inferInsert;
+export type PendingAction = typeof pendingActions.$inferSelect;
+export type NewPendingAction = typeof pendingActions.$inferInsert;
 
