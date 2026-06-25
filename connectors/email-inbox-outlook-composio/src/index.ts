@@ -142,15 +142,6 @@ function clampPageSize(requested: number | undefined, fallback: number): number 
   return Math.min(Math.max(n, 1), MAX_PAGE_SIZE);
 }
 
-function buildFilter(opts: ListMessagesOpts): string {
-  // Microsoft Graph uses OData $filter expressions.
-  const parts: string[] = [];
-  if (opts.unreadOnly) parts.push('isRead eq false');
-  if (opts.since) parts.push(`receivedDateTime ge ${opts.since.toISOString()}`);
-  if (opts.until) parts.push(`receivedDateTime le ${opts.until.toISOString()}`);
-  return parts.join(' and ');
-}
-
 // -----------------------------------------------------------------------------
 // Capability impl
 // -----------------------------------------------------------------------------
@@ -163,29 +154,31 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
 
   async function listMessagesRaw(
     args: Record<string, unknown>,
-  ): Promise<ListMessagesResult> {
-    // TODO: verify slug against Composio toolkit docs — Composio may name this
-    // OUTLOOK_LIST_MESSAGES, OUTLOOK_OUTLOOK_LIST_MESSAGES, or similar.
+  ): Promise<{ raw: OutlookListResult }> {
+    // GET_MAIL_DELTA is the verified Composio slug for listing/paging inbox messages.
+    // It does not support OData $filter — callers must post-filter the returned page.
+    // Pagination: pass the full @odata.nextLink URL as skip_token.
+    const { next_link, filter: _filter, ...rest } = args;
+    const toolArgs: Record<string, unknown> = { ...rest };
+    if (next_link) toolArgs.skip_token = next_link;
     const out = await substrate.executeTool<OutlookListResult>({
-      toolSlug: 'OUTLOOK_LIST_MESSAGES',
+      toolSlug: 'OUTLOOK_GET_MAIL_DELTA',
       userId,
-      arguments: args,
+      arguments: toolArgs,
     });
     if (!out.successful) {
       throw new Error(`outlook list failed: ${out.error ?? 'unknown error'}`);
     }
-    return {
-      messages: (out.data.value ?? []).map(toSummary),
-      nextCursor: out.data['@odata.nextLink'] ?? null,
-    };
+    return { raw: out.data };
   }
 
-  async function updateMessage(id: string, body: Record<string, unknown>): Promise<void> {
-    // TODO: verify slug — may be OUTLOOK_UPDATE_EMAIL or similar.
+  async function updateMessage(id: string, patch: Record<string, unknown>): Promise<void> {
+    // OUTLOOK_BATCH_UPDATE_MESSAGES is the verified slug. It wraps a single-message
+    // update in the batch envelope. Patch keys use Graph camelCase (isRead, categories).
     const out = await substrate.executeTool({
-      toolSlug: 'OUTLOOK_UPDATE_MESSAGE',
+      toolSlug: 'OUTLOOK_BATCH_UPDATE_MESSAGES',
       userId,
-      arguments: { message_id: id, ...body },
+      arguments: { updates: [{ message_id: id, patch }] },
     });
     if (!out.successful) {
       throw new Error(`outlook update failed: ${out.error ?? 'unknown error'}`);
@@ -193,11 +186,11 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
   }
 
   async function moveMessage(id: string, destinationId: string): Promise<void> {
-    // TODO: verify slug — may be OUTLOOK_MOVE_EMAIL.
+    // OUTLOOK_BATCH_MOVE_MESSAGES is the verified slug.
     const out = await substrate.executeTool({
-      toolSlug: 'OUTLOOK_MOVE_MESSAGE',
+      toolSlug: 'OUTLOOK_BATCH_MOVE_MESSAGES',
       userId,
-      arguments: { message_id: id, destination_id: destinationId },
+      arguments: { message_ids: [id], destination_id: destinationId },
     });
     if (!out.successful) {
       throw new Error(`outlook move failed: ${out.error ?? 'unknown error'}`);
@@ -208,19 +201,22 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
     async listMessages(opts: ListMessagesOpts): Promise<ListMessagesResult> {
       const pageSize = clampPageSize(opts.pageSize, defaultSize);
       const args: Record<string, unknown> = { top: pageSize };
-      const filter = buildFilter(opts);
-      if (filter) args.filter = filter;
       if (opts.labelId) args.folder_id = opts.labelId;
       if (opts.cursor) args.next_link = opts.cursor;
       ctx.logger.info(
-        { label: ctx.settings.label, filter, pageSize },
+        { label: ctx.settings.label, pageSize },
         'outlook-inbox-composio.listMessages',
       );
-      return listMessagesRaw(args);
+      const { raw } = await listMessagesRaw(args);
+      let messages = (raw.value ?? []).map(toSummary);
+      // GET_MAIL_DELTA has no server-side $filter; apply requested filters on the page.
+      if (opts.unreadOnly) messages = messages.filter((m) => m.unread);
+      if (opts.since) { const since = opts.since; messages = messages.filter((m) => m.receivedAt >= since); }
+      if (opts.until) { const until = opts.until; messages = messages.filter((m) => m.receivedAt <= until); }
+      return { messages, nextCursor: raw['@odata.nextLink'] ?? null };
     },
 
     async getMessage(id: string): Promise<InboxMessage> {
-      // TODO: verify slug.
       const out = await substrate.executeTool<OutlookMessage>({
         toolSlug: 'OUTLOOK_GET_MESSAGE',
         userId,
@@ -233,11 +229,11 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
     },
 
     async markRead(ids: string[]): Promise<void> {
-      for (const id of ids) await updateMessage(id, { is_read: true });
+      for (const id of ids) await updateMessage(id, { isRead: true });
     },
 
     async markUnread(ids: string[]): Promise<void> {
-      for (const id of ids) await updateMessage(id, { is_read: false });
+      for (const id of ids) await updateMessage(id, { isRead: false });
     },
 
     async archive(ids: string[]): Promise<void> {
@@ -250,7 +246,6 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
 
     async deletePermanently(ids: string[]): Promise<void> {
       for (const id of ids) {
-        // TODO: verify slug.
         const out = await substrate.executeTool({
           toolSlug: 'OUTLOOK_DELETE_MESSAGE',
           userId,
@@ -263,10 +258,6 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
     },
 
     async addLabels(ids: string[], labels: string[]): Promise<void> {
-      // Outlook categories: update the `categories` field. We don't read-modify-
-      // write here because round-tripping the full category set per message would
-      // require an extra GET per id. Callers that need preservation should call
-      // getMessage first and pass the merged list.
       for (const id of ids) {
         await updateMessage(id, { categories: labels });
       }
@@ -290,10 +281,9 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
     },
 
     async listLabels(): Promise<InboxLabel[]> {
-      // TODO: verify slug — Outlook categories live on the master category list
-      // (Graph: /me/outlook/masterCategories).
+      // OUTLOOK_GET_MASTER_CATEGORIES is the verified slug for /me/outlook/masterCategories.
       const out = await substrate.executeTool<OutlookListCategoriesResult>({
-        toolSlug: 'OUTLOOK_LIST_CATEGORIES',
+        toolSlug: 'OUTLOOK_GET_MASTER_CATEGORIES',
         userId,
         arguments: {},
       });
@@ -303,15 +293,14 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
       return (out.data.value ?? []).map((c) => ({
         id: c.id ?? '',
         name: c.displayName ?? '',
-        isUserDefined: true, // Outlook categories are all user-defined
+        isUserDefined: true,
       }));
     },
 
-    async search(query: string, opts?: SearchOpts): Promise<ListMessagesResult> {
-      const pageSize = clampPageSize(opts?.pageSize, defaultSize);
-      const args: Record<string, unknown> = { top: pageSize, search: query };
-      if (opts?.cursor) args.next_link = opts.cursor;
-      return listMessagesRaw(args);
+    async search(_query: string, _opts?: SearchOpts): Promise<ListMessagesResult> {
+      // Composio's OUTLOOK_GET_MAIL_DELTA does not expose Graph $search.
+      // Full-text search is not supported by this connector provider.
+      throw new Error('outlook-inbox-composio: full-text search is not supported via this provider');
     },
   };
 }
@@ -319,7 +308,7 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
 export const manifest = {
   slug: 'email-inbox-outlook-composio',
   capability: 'email-inbox' as const,
-  version: '0.0.1',
+  version: '0.0.2',
   displayName: 'Outlook Inbox (via Composio)',
   authKind: 'api-key' as const,
   externalOAuth: {
