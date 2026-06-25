@@ -101,38 +101,68 @@ function ArrayRenderer({ value }: { value: unknown[] }): JSX.Element {
     );
   }
   const rows = value as Array<Record<string, unknown>>;
-  // Column order = union of all keys, preserving first-seen order.
-  const cols: string[] = [];
+  // Column order = union of all keys, preserving first-seen order, but with
+  // opaque id-shaped columns pushed to the end so the meaningful fields
+  // (subject, from, score, reason, …) lead. On a narrow screen the first
+  // columns are what's visible without scrolling, so this matters.
+  const allCols: string[] = [];
   const seen = new Set<string>();
   for (const r of rows) for (const k of Object.keys(r)) if (!seen.has(k)) {
     seen.add(k);
-    cols.push(k);
+    allCols.push(k);
   }
+  const isIdCol = (c: string): boolean => /^(id|.*Id|.*_id|uuid|guid)$/i.test(c);
+  const cols = [...allCols.filter((c) => !isIdCol(c)), ...allCols.filter(isIdCol)];
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-[11px] uppercase tracking-wider text-ink-500 dark:text-ink-400">
-          <tr>
-            {cols.map((c) => (
-              <th key={c} className="px-3 py-2 text-left font-medium">
-                {humanLabel(c)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
-          {rows.map((row, i) => (
-            <tr key={i} className="align-top">
+    <>
+      {/* Desktop / wide: scannable table. */}
+      <div className="hidden overflow-x-auto sm:block">
+        <table className="w-full text-sm">
+          <thead className="text-[11px] uppercase tracking-wider text-ink-500 dark:text-ink-400">
+            <tr>
               {cols.map((c) => (
-                <td key={c} className="px-3 py-2">
-                  <CellValue value={row[c]} columnKey={c} />
-                </td>
+                <th key={c} className="px-3 py-2 text-left font-medium">
+                  {humanLabel(c)}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
+            {rows.map((row, i) => (
+              <tr key={i} className="align-top">
+                {cols.map((c) => (
+                  <td key={c} className="px-3 py-2">
+                    <CellValue value={row[c]} columnKey={c} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* Mobile: one card per row — fields stack and wrap, no horizontal scroll. */}
+      <div className="space-y-3 sm:hidden">
+        {rows.map((row, i) => (
+          <div
+            key={i}
+            className="rounded-md border border-ink-100 p-3 dark:border-ink-800"
+          >
+            <dl className="grid grid-cols-[minmax(72px,auto)_1fr] gap-x-3 gap-y-1">
+              {cols.map((c) => (
+                <div key={c} className="contents text-sm">
+                  <dt className="text-[11px] uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                    {humanLabel(c)}
+                  </dt>
+                  <dd className="min-w-0 break-words">
+                    <CellValue value={row[c]} columnKey={c} />
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
