@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-connector-email-inbox-gmail-composio",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "Gmail provider for the email-inbox capability, backed by Composio.",
   "type": "module",
   "main": "./dist/index.js",

@@ -35,6 +35,7 @@ import type { ExternalOAuthBroker } from '@frontrangesystems/business-os-connect
  */
 export const DEFAULT_TOOLKIT_VERSIONS: Record<string, string> = {
   gmail: '20260515_00',
+  outlook: '20260624_00',
 };
 
 // -----------------------------------------------------------------------------
