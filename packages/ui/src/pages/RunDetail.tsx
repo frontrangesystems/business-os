@@ -59,7 +59,9 @@ export function RunDetail(): JSX.Element {
           </Link>
         }
       />
-      <div className="mx-auto grid max-w-6xl gap-6 p-6 sm:p-8 lg:grid-cols-2">
+      {/* Single column: Outcome, then Details (full width — the details/digest
+          tables need the room), then the audit trail. */}
+      <div className="mx-auto grid max-w-6xl gap-6 p-6 sm:p-8">
         <section className="card p-6">
           <h2 className="section-heading mb-4">Outcome</h2>
           <div className="divide-y divide-ink-100 text-sm dark:divide-ink-800">
