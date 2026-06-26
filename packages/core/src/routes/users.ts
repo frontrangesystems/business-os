@@ -5,8 +5,6 @@ import {
   users,
   userRoles,
   ROLES,
-  ALL_ROLES,
-  isKnownRole,
   type Db,
 } from '@frontrangesystems/business-os-db';
 import { requireUser, requireRole } from './_require-user.js';
@@ -28,25 +26,6 @@ import { hashPassword } from '../auth/passwords.js';
  */
 
 const MIN_PASSWORD_LEN = 12;
-
-const RolesArray = z
-  .array(z.string())
-  .refine((arr) => arr.every(isKnownRole), {
-    message: 'unknown_role',
-  })
-  // De-dup so the same role can't be inserted twice (PK would reject anyway).
-  .transform((arr) => Array.from(new Set(arr)));
-
-const CreateUserBody = z.object({
-  email: z.string().email(),
-  displayName: z.string().trim().min(1).optional(),
-  password: z.string().min(MIN_PASSWORD_LEN),
-  roles: RolesArray.optional(),
-});
-
-const PatchRolesBody = z.object({
-  roles: RolesArray,
-});
 
 const PatchUserBody = z
   .object({
@@ -83,8 +62,39 @@ async function loadRoles(db: Db, userId: string): Promise<string[]> {
   return rows.map((r) => r.role);
 }
 
-export function registerUserRoutes(app: FastifyInstance): void {
+export function registerUserRoutes(
+  app: FastifyInstance,
+  customRoles: Array<{ value: string; label: string }> = [],
+): void {
   const adminOnly = { preHandler: [requireUser, requireRole('admin')] };
+  const validRoleValues = new Set(['admin', ...customRoles.map((r) => r.value)]);
+  const allRoleOptions = [
+    { value: 'admin', label: 'Admin' },
+    ...customRoles,
+  ];
+
+  const RolesArray = z
+    .array(z.string())
+    .refine((arr) => arr.every((r) => validRoleValues.has(r)), {
+      message: 'unknown_role',
+    })
+    .transform((arr) => Array.from(new Set(arr)));
+
+  const CreateUserBody = z.object({
+    email: z.string().email(),
+    displayName: z.string().trim().min(1).optional(),
+    password: z.string().min(MIN_PASSWORD_LEN),
+    roles: RolesArray.optional(),
+  });
+
+  const PatchRolesBody = z.object({
+    roles: RolesArray,
+  });
+
+  // ---------- GET /api/roles ----------
+  app.get('/api/roles', adminOnly, async () => {
+    return { roles: allRoleOptions };
+  });
 
   // ---------- GET /api/users ----------
   app.get('/api/users', adminOnly, async (req, reply) => {
@@ -271,6 +281,4 @@ export function registerUserRoutes(app: FastifyInstance): void {
     return { ok: true as const, user: { ...updated[0], roles } };
   });
 
-  // Surface the known role set so the UI doesn't hard-code it.
-  void ALL_ROLES;
 }
