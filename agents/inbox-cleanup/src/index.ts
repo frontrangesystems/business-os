@@ -54,11 +54,11 @@ const SettingsSchema = z.object({
     .describe(
       'Minimum messages from a single sender before the model considers cleanup. Default 3 protects personal/work email. Set to 1 to process every sender in the batch.',
     ),
-  labelId: z
+  folder: z
     .string()
     .optional()
     .describe(
-      'Folder/label ID to process. Leave empty to process the inbox. Check a run\'s "availableFolders" details to find IDs for your Outlook folders.',
+      'Folder name to process (e.g. "notification", "marketing"). Leave empty to process the inbox. Case-insensitive — the agent resolves the name to an ID automatically.',
     ),
 });
 
@@ -169,6 +169,7 @@ function parseClassificationJson(raw: string): Classification {
 async function collectMessages(
   inbox: EmailInboxCapability,
   settings: Settings,
+  labelId?: string,
 ): Promise<InboxMessageSummary[]> {
   const collected: InboxMessageSummary[] = [];
   let cursor: string | undefined;
@@ -177,7 +178,7 @@ async function collectMessages(
     const pageSize = Math.min(PAGE_SIZE, remaining);
     const page: ListMessagesResult = await inbox.listMessages({
       unreadOnly: settings.unreadOnly,
-      labelId: settings.labelId,
+      labelId,
       pageSize,
       cursor,
     });
@@ -222,17 +223,31 @@ export default defineAgent({
     const inbox = (await ctx.connector('email-inbox')) as EmailInboxCapability;
     const minGroupSize = settings.minGroupSize;
 
-    // List available folders so the operator can see folder IDs in run details.
+    // List available folders so the operator can see them in run details,
+    // and resolve a folder name to its ID if the `folder` setting is set.
     let availableFolders: Array<{ id: string; name: string }> | undefined;
+    let resolvedLabelId: string | undefined;
     if (inbox.listLabels) {
       try {
         availableFolders = await inbox.listLabels();
+        if (settings.folder) {
+          const needle = settings.folder.trim().toLowerCase();
+          const match = availableFolders.find((f) => f.name.toLowerCase() === needle);
+          if (match) {
+            resolvedLabelId = match.id;
+          } else {
+            ctx.logger.warn(
+              { folder: settings.folder, available: availableFolders.map((f) => f.name) },
+              'inbox-cleanup: folder name not found — falling back to inbox',
+            );
+          }
+        }
       } catch (err) {
         ctx.logger.warn({ err }, 'inbox-cleanup: could not list folders (non-fatal)');
       }
     }
 
-    const messages = await collectMessages(inbox, settings);
+    const messages = await collectMessages(inbox, settings, resolvedLabelId);
     if (messages.length === 0) {
       return {
         ok: true,
