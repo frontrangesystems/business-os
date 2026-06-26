@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-ui",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "Operator UI for Business OS installs. Library (createOperatorApp) + a default pre-built bundle.",
   "type": "module",
   "main": "./src/lib/manifest.ts",

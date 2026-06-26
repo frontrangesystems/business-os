@@ -400,4 +400,22 @@ export const Api = {
       `/api/connectors/${id}/finalize-connect`,
       { method: 'POST' },
     ),
+
+  // ---------------------------------------------------------------------------
+  // Platform settings
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns whether the Composio API key has been configured by the operator.
+   * Never returns the key value — only the configured status.
+   */
+  getComposioSettings: () =>
+    api<{ configured: boolean }>('/api/platform/composio'),
+
+  /**
+   * Save (or replace) the Composio API key. The key is encrypted at rest.
+   * On success, Composio-backed connectors can initiate OAuth flows.
+   */
+  setComposioApiKey: (apiKey: string) =>
+    api<{ ok: true }>('/api/platform/composio', { method: 'PUT', body: { apiKey } }),
 };

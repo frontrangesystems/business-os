@@ -19,6 +19,7 @@ import {
 import { requireUser, requireRole } from './_require-user.js';
 import { zodToFieldSchema } from '../zod-form.js';
 import { AGENT_REFRESH_CHANNEL } from '../agent-refresh.js';
+import type { ExternalOAuthBrokerLike } from '../inventory.js';
 
 /**
  * Cross-process live refresh: after persisting an enable/disable/schedule
@@ -273,6 +274,26 @@ function require503<T>(thing: T | undefined, reply: FastifyReply, label: string)
     return false;
   }
   return true;
+}
+
+/**
+ * Resolve an external OAuth broker for the given provider. Prefers the lazy
+ * DB-sourced getter (when `getExternalOAuthBroker` is wired), then falls back
+ * to the static `externalOAuthBrokers` map for backward compat.
+ */
+async function resolveExternalOAuthBroker(
+  deps: {
+    getExternalOAuthBroker?: (provider: string) => Promise<ExternalOAuthBrokerLike | null>;
+    externalOAuthBrokers?: { composio?: ExternalOAuthBrokerLike };
+  },
+  provider: string,
+): Promise<ExternalOAuthBrokerLike | null> {
+  if (deps.getExternalOAuthBroker) {
+    return deps.getExternalOAuthBroker(provider);
+  }
+  // Backward-compat: static broker passed directly to buildApp.
+  const staticBroker = deps.externalOAuthBrokers?.[provider as 'composio'];
+  return staticBroker ?? null;
 }
 
 async function loadAgentSettings(req: FastifyRequest, slug: string): Promise<unknown> {
@@ -1254,11 +1275,11 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       reply.code(400).send({ error: 'connector_does_not_use_external_oauth' });
       return;
     }
-    const broker = req.deps.externalOAuthBrokers?.[ext.provider];
+    const broker = await resolveExternalOAuthBroker(req.deps, ext.provider);
     if (!broker) {
       reply.code(503).send({
         error: 'external_oauth_broker_not_wired',
-        hint: `Pass externalOAuthBrokers.${ext.provider} to startServer().`,
+        hint: `Configure the ${ext.provider} API key via the operator settings UI, or pass externalOAuthBrokers.${ext.provider} to startServer().`,
       });
       return;
     }
@@ -1317,9 +1338,12 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         reply.code(400).send({ error: 'connector_does_not_use_external_oauth' });
         return;
       }
-      const broker = req.deps.externalOAuthBrokers?.[ext.provider];
+      const broker = await resolveExternalOAuthBroker(req.deps, ext.provider);
       if (!broker) {
-        reply.code(503).send({ error: 'external_oauth_broker_not_wired' });
+        reply.code(503).send({
+          error: 'external_oauth_broker_not_wired',
+          hint: 'Configure the Composio API key via Settings → Platform Integrations, or pass externalOAuthBrokers.composio to startServer().',
+        });
         return;
       }
 
@@ -1330,16 +1354,17 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       }
 
       // Persist credentials in the shape Composio-backed connectors expect:
-      // kind=api-key, key=COMPOSIO_API_KEY, extra=per-instance handles.
-      // We snapshot the broker API key from env into the encrypted store so
-      // the runtime can materialize the connector without a separate env
-      // lookup. Rotating COMPOSIO_API_KEY requires re-finalizing affected
-      // instances — acceptable for the rare key-rotation case.
-      const brokerApiKey = process.env[`${ext.provider.toUpperCase()}_API_KEY`];
+      // kind=api-key, key=<composio API key>, extra=per-instance handles.
+      // The API key is read from the DB secrets store first (operator-configured
+      // via the settings UI), then falls back to the env var for backward compat
+      // with existing deploys that set COMPOSIO_API_KEY in their .env.
+      const brokerApiKey =
+        (await req.deps.secrets.get(`platform:${ext.provider}`, 'api_key')) ??
+        process.env[`${ext.provider.toUpperCase()}_API_KEY`];
       if (!brokerApiKey) {
-        reply.code(500).send({
-          error: 'broker_api_key_missing_in_env',
-          hint: `${ext.provider.toUpperCase()}_API_KEY must be set in the server's environment.`,
+        reply.code(503).send({
+          error: 'broker_api_key_not_configured',
+          hint: `Configure the ${ext.provider} API key via the operator settings UI (Platform Integrations section), or set ${ext.provider.toUpperCase()}_API_KEY in the environment.`,
         });
         return;
       }
@@ -1657,6 +1682,28 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       recentRuns,
       capabilities: capabilityStatus,
     };
+  });
+
+  // ---------- GET /api/platform/composio ----------
+  // Returns the Composio platform configuration status. Never reveals the key
+  // value — only indicates whether a key has been saved by the operator.
+  app.get('/api/platform/composio', { preHandler: [requireUser, requireRole('admin')] }, async (req) => {
+    const key = await req.deps.secrets.get('platform:composio', 'api_key');
+    return { configured: !!key };
+  });
+
+  // ---------- PUT /api/platform/composio ----------
+  // Operator saves (or replaces) the Composio API key. The key is encrypted at
+  // rest via the SecretsStore. The API never returns the key in any response.
+  app.put('/api/platform/composio', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
+    const body = z.object({ apiKey: z.string().min(1) }).safeParse(req.body);
+    if (!body.success) {
+      reply.code(400).send({ error: 'invalid_input', hint: 'apiKey must be a non-empty string' });
+      return;
+    }
+    await req.deps.secrets.put('platform:composio', 'api_key', body.data.apiKey);
+    await req.audit('admin.platform.composio.api_key.update', {});
+    return { ok: true as const };
   });
 
   // ---------- GET /api/audit ----------
