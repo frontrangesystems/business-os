@@ -76,6 +76,12 @@ export interface StartServerOpts {
   /** Override the issuer label shown in TOTP enrollment. */
   issuer?: string;
   /**
+   * Client-defined roles beyond the framework's 'admin'. Each entry surfaces
+   * as a checkbox in the Users management UI and is accepted in role-assignment
+   * API calls. Example: [{value:'estimator',label:'Estimator'}] for C&M.
+   */
+  customRoles?: Array<{ value: string; label: string }>;
+  /**
    * External OAuth brokers (Composio etc). The client shell constructs the
    * concrete broker with its API key + passes it here. Currently only
    * 'composio' is wired; future providers go in the same map.
@@ -265,6 +271,7 @@ export async function startServer(opts: StartServerOpts): Promise<StartedServer>
           trigger,
           externalOAuthBrokers: opts.externalOAuthBrokers,
           getExternalOAuthBroker,
+          customRoles: opts.customRoles,
           publicUrl: opts.publicUrl ?? opts.env?.PUBLIC_URL,
           ...opts.overrideAppDeps,
         });

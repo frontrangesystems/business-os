@@ -418,4 +418,8 @@ export const Api = {
    */
   setComposioApiKey: (apiKey: string) =>
     api<{ ok: true }>('/api/platform/composio', { method: 'PUT', body: { apiKey } }),
+
+  /** Returns the full set of assignable roles (admin + any client-defined custom roles). */
+  getRoles: () =>
+    api<{ roles: Array<{ value: string; label: string }> }>('/api/roles'),
 };

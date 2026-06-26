@@ -58,6 +58,7 @@ d('user-management routes (real Postgres)', () => {
       clientSlug: 'test',
       logger: false,
       serveUi: false,
+      customRoles: [{ value: 'estimator', label: 'Estimator' }],
     });
     await app.ready();
 

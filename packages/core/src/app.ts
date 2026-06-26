@@ -73,6 +73,12 @@ export interface AppDeps {
    * are provided; can also be set directly in tests / overrideAppDeps.
    */
   getExternalOAuthBroker?: (provider: string) => Promise<ExternalOAuthBrokerLike | null>;
+  /**
+   * Client-defined roles beyond the framework's 'admin'. Each entry surfaces
+   * as a checkbox in the Users management UI and is accepted in role-assignment
+   * API calls. Example: [{value:'estimator',label:'Estimator'}] for C&M.
+   */
+  customRoles?: Array<{ value: string; label: string }>;
 }
 
 declare module 'fastify' {
@@ -202,7 +208,7 @@ export function buildApp(deps: AppDeps): FastifyInstance & { deps: AppDeps } {
   registerFastifySentry(app);
   registerAuthRoutes(app);
   registerAdminRoutes(app);
-  registerUserRoutes(app);
+  registerUserRoutes(app, deps.customRoles);
 
   // Modules go under /api/modules/<slug>. Registration is async (loads settings
   // from the DB) and must happen BEFORE Fastify's ready phase — startServer

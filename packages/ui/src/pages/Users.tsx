@@ -12,9 +12,10 @@ import { useAuth } from '../lib/auth';
  * and the last-admin lockout guards — this page surfaces those errors inline.
  */
 
-const ROLE_OPTIONS: Array<{ value: string; label: string }> = [
+// Roles are fetched from /api/roles so client shells can define custom ones.
+// Seed with admin so the UI renders before the fetch completes.
+const DEFAULT_ROLE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'admin', label: 'Admin' },
-  { value: 'estimator', label: 'Estimator' },
 ];
 
 const ERROR_LABELS: Record<string, string> = {
@@ -31,13 +32,15 @@ function errLabel(e: unknown): string {
 
 export function Users(): JSX.Element {
   const [users, setUsers] = useState<ManagedUser[] | null>(null);
+  const [roleOptions, setRoleOptions] = useState(DEFAULT_ROLE_OPTIONS);
   const [error, setError] = useState<string | null>(null);
 
   const load = async (): Promise<void> => {
     setError(null);
     try {
-      const r = await Api.listUsers();
-      setUsers(r.users);
+      const [usersRes, rolesRes] = await Promise.all([Api.listUsers(), Api.getRoles()]);
+      setUsers(usersRes.users);
+      setRoleOptions(rolesRes.roles);
     } catch (e) {
       setError(errLabel(e));
     }
@@ -54,7 +57,7 @@ export function Users(): JSX.Element {
         description="Add operators, assign roles, and activate or deactivate accounts."
       />
       <div className="mx-auto max-w-4xl space-y-6 p-6 sm:p-8">
-        <AddUserForm onCreated={load} />
+        <AddUserForm onCreated={load} roleOptions={roleOptions} />
 
         <section className="card p-6">
           <h2 className="section-heading mb-4">All users</h2>
@@ -66,7 +69,7 @@ export function Users(): JSX.Element {
           ) : (
             <div className="space-y-3">
               {users.map((u) => (
-                <UserRow key={u.id} user={u} onChanged={load} />
+                <UserRow key={u.id} user={u} onChanged={load} roleOptions={roleOptions} />
               ))}
             </div>
           )}
@@ -76,7 +79,8 @@ export function Users(): JSX.Element {
   );
 }
 
-function AddUserForm(props: { onCreated: () => Promise<void> }): JSX.Element {
+function AddUserForm(props: { onCreated: () => Promise<void>; roleOptions: Array<{ value: string; label: string }> }): JSX.Element {
+  const { roleOptions } = props;
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
@@ -195,7 +199,7 @@ function AddUserForm(props: { onCreated: () => Promise<void> }): JSX.Element {
           <div>
             <span className="label">Roles</span>
             <div className="mt-1 flex flex-col gap-1.5">
-              {ROLE_OPTIONS.map((r) => (
+              {roleOptions.map((r) => (
                 <label key={r.value} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -220,7 +224,8 @@ function AddUserForm(props: { onCreated: () => Promise<void> }): JSX.Element {
   );
 }
 
-function UserRow(props: { user: ManagedUser; onChanged: () => Promise<void> }): JSX.Element {
+function UserRow(props: { user: ManagedUser; onChanged: () => Promise<void>; roleOptions: Array<{ value: string; label: string }> }): JSX.Element {
+  const { roleOptions } = props;
   const { user } = props;
   const { state } = useAuth();
   const isSelf = state.kind === 'authenticated' && state.user.id === user.id;
@@ -301,7 +306,7 @@ function UserRow(props: { user: ManagedUser; onChanged: () => Promise<void> }): 
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-4">
-        {ROLE_OPTIONS.map((r) => (
+        {roleOptions.map((r) => (
           <label key={r.value} className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

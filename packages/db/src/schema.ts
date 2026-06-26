@@ -71,7 +71,8 @@ export const sessions = pgTable(
 
 /**
  * Roles a user holds. Many-to-many: a user can hold zero, one, or both of the
- * app-level roles (admin + estimator — see ROLES below).
+ * app-level roles. Only 'admin' is framework-defined. Client shells pass
+ * additional roles via startServer({ customRoles }) — see ROLES below.
  *
  * V1 keeps roles as an app-level constant set (ROLES), NOT a separate `roles`
  * table — `role` is just a free-text column validated at the application layer.
@@ -100,13 +101,12 @@ export const userRoles = pgTable(
  */
 export const ROLES = {
   ADMIN: 'admin',
-  ESTIMATOR: 'estimator',
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
 
-/** All known roles, for validation. */
-export const ALL_ROLES: readonly Role[] = [ROLES.ADMIN, ROLES.ESTIMATOR];
+/** Framework-defined roles. Client shells may add more via customRoles. */
+export const ALL_ROLES: readonly Role[] = [ROLES.ADMIN];
 
 export function isKnownRole(value: string): value is Role {
   return (ALL_ROLES as readonly string[]).includes(value);
