@@ -45,16 +45,24 @@ const SettingsSchema = z.object({
     .boolean()
     .default(true)
     .describe('Only consider unread messages. Turn off to sweep already-read backlog too.'),
+  minGroupSize: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(3)
+    .describe(
+      'Minimum messages from a single sender before the model considers cleanup. Default 3 protects personal/work email. Set to 1 to process every sender in the batch.',
+    ),
+  labelId: z
+    .string()
+    .optional()
+    .describe(
+      'Folder/label ID to process. Leave empty to process the inbox. Check a run\'s "availableFolders" details to find IDs for your Outlook folders.',
+    ),
 });
 
 type Settings = z.infer<typeof SettingsSchema>;
-
-/**
- * Minimum messages from a single sender in the batch before we'll consider
- * a cleanup action. Senders below this stay untouched — one-off messages
- * are almost always personal/work, not noise.
- */
-const MIN_GROUP_SIZE = 3;
 
 /** Hard cap on per-page size per the connector contract. */
 const PAGE_SIZE = 200;
@@ -169,6 +177,7 @@ async function collectMessages(
     const pageSize = Math.min(PAGE_SIZE, remaining);
     const page: ListMessagesResult = await inbox.listMessages({
       unreadOnly: settings.unreadOnly,
+      labelId: settings.labelId,
       pageSize,
       cursor,
     });
@@ -198,7 +207,7 @@ function groupBySender(messages: InboxMessageSummary[]): SenderGroup[] {
 export default defineAgent({
   manifest: {
     slug: 'inbox-cleanup',
-    version: '0.0.1',
+    version: '0.0.2',
     displayName: 'Inbox Cleanup',
     description:
       'Cluster the inbox backlog by sender and sweep bulk noise (archive or trash) under operator-defined safeguards.',
@@ -211,24 +220,35 @@ export default defineAgent({
   run: async (ctx): Promise<AgentResult> => {
     const settings = ctx.settings;
     const inbox = (await ctx.connector('email-inbox')) as EmailInboxCapability;
+    const minGroupSize = settings.minGroupSize;
+
+    // List available folders so the operator can see folder IDs in run details.
+    let availableFolders: Array<{ id: string; name: string }> | undefined;
+    if (inbox.listLabels) {
+      try {
+        availableFolders = await inbox.listLabels();
+      } catch (err) {
+        ctx.logger.warn({ err }, 'inbox-cleanup: could not list folders (non-fatal)');
+      }
+    }
 
     const messages = await collectMessages(inbox, settings);
     if (messages.length === 0) {
       return {
         ok: true,
         summary: 'inbox empty — nothing to sweep',
-        details: { scanned: 0 },
+        details: { scanned: 0, availableFolders },
       };
     }
 
     const groups = groupBySender(messages);
-    const candidateGroups = groups.filter((g) => g.totalCount >= MIN_GROUP_SIZE);
+    const candidateGroups = groups.filter((g) => g.totalCount >= minGroupSize);
 
     if (candidateGroups.length === 0) {
       return {
         ok: true,
-        summary: `scanned ${messages.length} messages; no sender had >= ${MIN_GROUP_SIZE} messages — nothing to sweep`,
-        details: { scanned: messages.length, groups: groups.length },
+        summary: `scanned ${messages.length} messages; no sender had >= ${minGroupSize} messages — nothing to sweep`,
+        details: { scanned: messages.length, groups: groups.length, availableFolders },
       };
     }
 
@@ -319,6 +339,7 @@ export default defineAgent({
         kept: keptCount,
         keptSenders,
         dryRun,
+        availableFolders,
         usage: response.usage,
       },
     };
