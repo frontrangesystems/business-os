@@ -98,6 +98,17 @@ interface OutlookListCategoriesResult {
   value?: OutlookCategory[];
 }
 
+interface OutlookMailFolder {
+  id?: string;
+  displayName?: string;
+  totalItemCount?: number;
+  unreadItemCount?: number;
+}
+
+interface OutlookListFoldersResult {
+  value?: OutlookMailFolder[];
+}
+
 function addr(a: OutlookEmailAddress | undefined): string {
   return a?.emailAddress?.address ?? '';
 }
@@ -281,18 +292,19 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
     },
 
     async listLabels(): Promise<InboxLabel[]> {
-      // OUTLOOK_GET_MASTER_CATEGORIES is the verified slug for /me/outlook/masterCategories.
-      const out = await substrate.executeTool<OutlookListCategoriesResult>({
-        toolSlug: 'OUTLOOK_GET_MASTER_CATEGORIES',
+      // OUTLOOK_LIST_MAIL_FOLDERS — best-guess Composio slug for GET /me/mailFolders.
+      // Verify against Composio Outlook tool list if this fails at runtime.
+      const out = await substrate.executeTool<OutlookListFoldersResult>({
+        toolSlug: 'OUTLOOK_LIST_MAIL_FOLDERS',
         userId,
         arguments: {},
       });
       if (!out.successful) {
-        throw new Error(`outlook list categories failed: ${out.error ?? 'unknown error'}`);
+        throw new Error(`outlook list folders failed: ${out.error ?? 'unknown error'}`);
       }
-      return (out.data.value ?? []).map((c) => ({
-        id: c.id ?? '',
-        name: c.displayName ?? '',
+      return (out.data.value ?? []).map((f) => ({
+        id: f.id ?? '',
+        name: f.displayName ?? '',
         isUserDefined: true,
       }));
     },
@@ -308,7 +320,7 @@ function makeInbox(ctx: ConnectorContext<Settings>): EmailInboxCapability {
 export const manifest = {
   slug: 'email-inbox-outlook-composio',
   capability: 'email-inbox' as const,
-  version: '0.0.2',
+  version: '0.0.3',
   displayName: 'Outlook Inbox (via Composio)',
   authKind: 'api-key' as const,
   externalOAuth: {
