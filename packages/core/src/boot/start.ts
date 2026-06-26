@@ -79,9 +79,33 @@ export interface StartServerOpts {
    * External OAuth brokers (Composio etc). The client shell constructs the
    * concrete broker with its API key + passes it here. Currently only
    * 'composio' is wired; future providers go in the same map.
+   *
+   * Kept for backward compat. New installs should use
+   * `externalOAuthBrokerFactories` instead — the key is stored in the DB
+   * and the broker is constructed lazily at OAuth flow time.
    */
   externalOAuthBrokers?: {
     composio?: ExternalOAuthBrokerLike;
+  };
+  /**
+   * Broker factories keyed by provider name. When provided, `startServer`
+   * constructs a lazy `getExternalOAuthBroker` resolver that reads the API
+   * key from the DB secrets store at OAuth flow time and passes it to the
+   * factory. The key must be saved by the operator via the settings UI
+   * (`PUT /api/platform/composio`).
+   *
+   * The factory receives the decrypted API key and must return a broker
+   * implementing `ExternalOAuthBrokerLike`. Core cannot import the concrete
+   * broker class (that would violate the framework → connector boundary), so
+   * the client shell provides the constructor here.
+   *
+   * Example:
+   *   externalOAuthBrokerFactories: {
+   *     composio: (apiKey) => new ComposioSubstrate({ apiKey }),
+   *   }
+   */
+  externalOAuthBrokerFactories?: {
+    composio?: (apiKey: string) => ExternalOAuthBrokerLike;
   };
   /**
    * Public URL of this install. Used to build OAuth callback URLs the broker
@@ -160,6 +184,38 @@ export async function startServer(opts: StartServerOpts): Promise<StartedServer>
     await seedAgentEnabledIfNeeded(db, opts.inventory, log);
   }
 
+  // Lazy broker resolver: reads the API key from the DB secrets store at
+  // OAuth flow time, then hands it to the client-provided factory. This lets
+  // the operator configure the key via the settings UI without restarting.
+  // Static externalOAuthBrokers still work for backward compat and take
+  // precedence over the factory.
+  let getExternalOAuthBroker: ((provider: string) => Promise<ExternalOAuthBrokerLike | null>) | undefined;
+  const factories = opts.externalOAuthBrokerFactories ?? {};
+  const staticBrokers = opts.externalOAuthBrokers ?? {};
+  // Warn at boot if static broker will shadow the factory — operator setting the key via the
+  // settings UI will appear to succeed but the static broker will always be used instead.
+  for (const provider of Object.keys(factories)) {
+    if (staticBrokers[provider as keyof typeof staticBrokers]) {
+      log.warn(
+        { provider },
+        `externalOAuthBrokerFactories.${provider} is registered but externalOAuthBrokers.${provider} takes precedence — key set via the settings UI will be ignored. Remove externalOAuthBrokers.${provider} from startServer() to enable the DB-backed factory.`,
+      );
+    }
+  }
+  if (Object.keys(factories).length > 0 || Object.keys(staticBrokers).length > 0) {
+    getExternalOAuthBroker = async (provider: string) => {
+      // Static broker takes precedence (backward compat with existing deploys).
+      const staticBroker = staticBrokers[provider as keyof typeof staticBrokers];
+      if (staticBroker) return staticBroker;
+      // Factory path: read key from DB, construct broker on demand.
+      const factory = factories[provider as keyof typeof factories];
+      if (!factory) return null;
+      const apiKey = await secrets.get(`platform:${provider}`, 'api_key');
+      if (!apiKey) return null;
+      return factory(apiKey);
+    };
+  }
+
   const trigger = opts.triggerFactory?.({
     startScheduler: mode === 'worker' || mode === 'both',
   });
@@ -208,6 +264,7 @@ export async function startServer(opts: StartServerOpts): Promise<StartedServer>
           inventory: opts.inventory,
           trigger,
           externalOAuthBrokers: opts.externalOAuthBrokers,
+          getExternalOAuthBroker,
           publicUrl: opts.publicUrl ?? opts.env?.PUBLIC_URL,
           ...opts.overrideAppDeps,
         });

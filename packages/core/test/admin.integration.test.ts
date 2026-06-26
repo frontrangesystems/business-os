@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { buildApp, SESSION_COOKIE } from '../src/app.js';
+import { buildApp, SESSION_COOKIE, type AppDeps } from '../src/app.js';
 import { createSecretsStore } from '../src/secrets/index.js';
 import { createUser } from '../src/auth/users.js';
 import type {
@@ -599,6 +599,115 @@ d('admin/operator API (real Postgres)', () => {
       expect(r.json().error).toBe('inventory_not_wired');
     } finally {
       await bare.close();
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Platform settings — Composio API key
+  // ---------------------------------------------------------------------------
+
+  it('platform composio: GET returns { configured: false } before any key is saved', async () => {
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/platform/composio',
+      headers: { cookie },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ configured: false });
+  });
+
+  it('platform composio: PUT saves key and GET shows configured=true', async () => {
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/platform/composio',
+      headers: { cookie },
+      payload: { apiKey: 'test-composio-key-from-db' },
+    });
+    expect(put.statusCode).toBe(200);
+    expect(put.json().ok).toBe(true);
+
+    const get = await app.inject({
+      method: 'GET',
+      url: '/api/platform/composio',
+      headers: { cookie },
+    });
+    expect(get.statusCode).toBe(200);
+    expect(get.json()).toEqual({ configured: true });
+  });
+
+  it('platform composio: connect flow works with DB-stored key via getExternalOAuthBroker', async () => {
+    // Store the composio key in the DB using the secrets store (simulates the
+    // operator saving the key via PUT /api/platform/composio).
+    const secrets2 = createSecretsStore(env.db, encryptionKey);
+    await secrets2.put('platform:composio', 'api_key', 'factory-composio-key');
+
+    const factoryBroker = fakeBroker();
+    factoryBroker.setActive('ca_factory_account');
+
+    // Build an app that uses getExternalOAuthBroker (lazy factory path).
+    // No static externalOAuthBrokers — the broker is constructed from the DB key.
+    const appWithFactory = buildApp({
+      db: env.db,
+      secrets: secrets2,
+      encryptionKey,
+      clientSlug: 'test',
+      logger: false,
+      serveUi: false,
+      inventory: fakeInventory(),
+      // Lazy broker getter: reads key from DB secrets store, returns broker when found.
+      getExternalOAuthBroker: async (provider: string) => {
+        if (provider !== 'composio') return null;
+        const key = await secrets2.get('platform:composio', 'api_key');
+        if (!key) return null;
+        return factoryBroker;
+      },
+    } as unknown as AppDeps);
+    await appWithFactory.ready();
+
+    try {
+      const login = await appWithFactory.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'op@example.com', password: 'correct-horse-battery-staple' },
+      });
+      const setCookie = login.headers['set-cookie'];
+      const header = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+      const m = (header ?? '').match(new RegExp(`${SESSION_COOKIE}=([^;]+)`));
+      const factoryCookie = `${SESSION_COOKIE}=${m?.[1]}`;
+
+      // Create a Composio-backed connector instance.
+      const create = await appWithFactory.inject({
+        method: 'POST',
+        url: '/api/connectors',
+        headers: { cookie: factoryCookie },
+        payload: {
+          capability: 'email',
+          providerSlug: 'email-gmail-composio',
+          displayName: 'Gmail (factory test)',
+        },
+      });
+      expect(create.statusCode).toBe(200);
+      const id = create.json().instance.id;
+
+      // /connect should use the DB-stored key via getExternalOAuthBroker, NOT 503.
+      const initiate = await appWithFactory.inject({
+        method: 'POST',
+        url: `/api/connectors/${id}/connect`,
+        headers: { cookie: factoryCookie },
+      });
+      expect(initiate.statusCode).toBe(200);
+      expect(initiate.json().redirectUrl).toMatch(/composio\/lk_bos-/);
+
+      // /finalize-connect should complete successfully using the DB key.
+      const done = await appWithFactory.inject({
+        method: 'POST',
+        url: `/api/connectors/${id}/finalize-connect`,
+        headers: { cookie: factoryCookie },
+      });
+      expect(done.statusCode).toBe(200);
+      expect(done.json()).toMatchObject({ ok: true, connectedAccountId: 'ca_factory_account' });
+    } finally {
+      await appWithFactory.close();
     }
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
@@ -8,6 +8,7 @@ export function Settings(): JSX.Element {
   const { state, refresh } = useAuth();
   const email = state.kind === 'authenticated' ? state.user.email : '—';
   const enrolled = state.kind === 'authenticated' && state.totpEnrolled;
+  const isAdmin = state.kind === 'authenticated' && state.user.roles.includes('admin');
 
   return (
     <div>
@@ -41,6 +42,18 @@ export function Settings(): JSX.Element {
             <EnrollTotp onChange={refresh} />
           )}
         </section>
+
+        {isAdmin && (
+          <section className="card p-6">
+            <h2 className="section-heading mb-1">Platform Integrations</h2>
+            <p className="mb-4 text-sm text-ink-600 dark:text-ink-400">
+              API keys for platform-level integrations. These keys are encrypted at rest and
+              used by the framework when operators connect external accounts (e.g. Gmail via
+              Composio). Each client install has its own Composio account and key.
+            </p>
+            <ComposioApiKeySection />
+          </section>
+        )}
       </div>
     </div>
   );
@@ -306,6 +319,150 @@ function DisableTotp(props: { onChange: () => Promise<void> }): JSX.Element {
       >
         {submitting ? 'Disabling…' : 'Disable two-factor'}
       </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Platform integrations
+// ---------------------------------------------------------------------------
+
+function ComposioApiKeySection(): JSX.Element {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [showInput, setShowInput] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const load = async (): Promise<void> => {
+    try {
+      const r = await Api.getComposioSettings();
+      setConfigured(r.configured);
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const save = async (): Promise<void> => {
+    if (!apiKey.trim()) return;
+    setError(null);
+    setSaving(true);
+    setSaved(false);
+    try {
+      await Api.setComposioApiKey(apiKey.trim());
+      setApiKey('');
+      setShowInput(false);
+      setSaved(true);
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof ApiError ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="mb-1 text-sm font-medium text-ink-900 dark:text-ink-100">
+          Composio API Key
+        </div>
+        <p className="mb-3 text-xs text-ink-500 dark:text-ink-400">
+          Required for Gmail, Outlook, and other Composio-managed OAuth connectors. Obtain
+          your key from the{' '}
+          <a
+            href="https://app.composio.dev/settings"
+            target="_blank"
+            rel="noreferrer"
+            className="underline hover:text-ink-700 dark:hover:text-ink-200"
+          >
+            Composio dashboard
+          </a>
+          .
+        </p>
+        <div className="flex items-center gap-2">
+          {loadError && (
+            <span className="text-xs text-red-600 dark:text-red-400">Could not load status — refresh to retry.</span>
+          )}
+          {!loadError && configured === null && (
+            <span className="text-xs text-ink-400 dark:text-ink-500">Loading…</span>
+          )}
+          {!loadError && configured === true && !showInput && (
+            <>
+              <span className="pill-ok">configured</span>
+              <button
+                className="btn-secondary text-xs"
+                onClick={() => { setShowInput(true); setSaved(false); }}
+              >
+                Update key
+              </button>
+            </>
+          )}
+          {!loadError && configured === false && !showInput && (
+            <>
+              <span className="pill-bad">not configured</span>
+              <button
+                className="btn-primary text-xs"
+                onClick={() => setShowInput(true)}
+              >
+                Set key
+              </button>
+            </>
+          )}
+          {saved && !showInput && (
+            <span className="text-xs text-green-700 dark:text-green-400">Saved successfully.</span>
+          )}
+        </div>
+      </div>
+
+      {showInput && (
+        <div className="space-y-3">
+          <div>
+            <label className="label" htmlFor="composio-api-key">
+              Paste your Composio API key
+            </label>
+            <input
+              id="composio-api-key"
+              type="password"
+              className="input-mono w-full max-w-sm"
+              placeholder="sk-…"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              autoFocus
+            />
+          </div>
+          {error && (
+            <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">
+              {error}
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              className="btn-primary"
+              disabled={!apiKey.trim() || saving}
+              onClick={save}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={() => { setShowInput(false); setApiKey(''); setError(null); }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -64,6 +64,15 @@ export interface AppDeps {
    * Host header at request time.
    */
   publicUrl?: string;
+  /**
+   * Lazy broker resolver. When present, the connect/finalize-connect routes
+   * call this instead of (or before) checking `externalOAuthBrokers`. The
+   * resolver reads the provider's API key from the DB secrets store and
+   * returns a fully-constructed broker, or null when the key is not yet
+   * configured. Constructed by startServer when `externalOAuthBrokerFactories`
+   * are provided; can also be set directly in tests / overrideAppDeps.
+   */
+  getExternalOAuthBroker?: (provider: string) => Promise<ExternalOAuthBrokerLike | null>;
 }
 
 declare module 'fastify' {
