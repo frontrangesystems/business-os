@@ -4,6 +4,7 @@ import { users, userRoles } from '@frontrangesystems/business-os-db';
 import { authContract } from '@frontrangesystems/business-os-api-contract';
 import { SESSION_COOKIE } from '../app.js';
 import { requireUser } from './_require-user.js';
+import { sendPasswordResetEmail } from '../system-email.js';
 import {
   verifyEmailPassword,
   createSession,
@@ -205,15 +206,23 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       email: parsed.data.email,
       issued: !!issued,
     });
-    // The token itself is returned to the caller ONLY when running in test mode
-    // — production deployments hand it to the system-email connector instead.
-    // For now, log it at info level for development convenience. The route
-    // handler in client repos will swap this for an email send.
     if (issued) {
+      // Log a short prefix for dev convenience (token is hashed in DB; this leaks nothing sensitive).
       req.log.info(
         { reset_token_hint: issued.token.slice(0, 8) + '…' },
         'issued password reset token',
       );
+
+      // Send the reset email via Resend (no-ops if RESEND_API_KEY is absent).
+      const publicUrl = process.env['PUBLIC_URL'];
+      if (!publicUrl) {
+        req.log.warn('PUBLIC_URL is not set — password reset email will contain a relative URL');
+      }
+      const resetUrl = `${publicUrl ?? ''}/reset-password?token=${issued.token}`;
+      await sendPasswordResetEmail(parsed.data.email, resetUrl).catch((err: unknown) => {
+        // Log but don't fail the request — user still gets { ok: true }.
+        req.log.error({ err }, 'failed to send password reset email');
+      });
     }
     return { ok: true as const };
   });
