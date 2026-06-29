@@ -1,8 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-core",
-
-  "version": "0.0.14",
-
+  "version": "0.0.15",
   "description": "Fastify server, auth, audit log, secrets, settings — the framework's runnable spine.",
   "type": "module",
   "main": "./dist/index.js",
@@ -43,11 +41,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@fastify/multipart": "^8.3.1",
+    "@fastify/static": "^7.0.4",
     "@frontrangesystems/business-os-agent-sdk": "workspace:^",
     "@frontrangesystems/business-os-api-contract": "workspace:^",
     "@frontrangesystems/business-os-db": "workspace:^",
-    "@fastify/multipart": "^8.3.1",
-    "@fastify/static": "^7.0.4",
     "@sentry/node": "^8.32.0",
     "argon2": "^0.41.0",
     "drizzle-orm": "^0.33.0",
@@ -56,6 +54,7 @@
     "otpauth": "^9.3.2",
     "pino": "^9.3.0",
     "postgres": "^3.4.4",
+    "resend": "^6.16.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
