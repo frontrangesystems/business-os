@@ -156,38 +156,38 @@ importers:
         specifier: 0.10.0
         version: 0.10.0(zod@3.25.76)
       '@frontrangesystems/business-os-agent-sdk':
-        specifier: ^0.0.9
-        version: link:../../packages/agent-sdk
+        specifier: ^0.0.12
+        version: 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
       '@frontrangesystems/business-os-agents-all':
-        specifier: ^0.0.9
-        version: link:../../packages/agents-all
+        specifier: ^0.0.12
+        version: 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
       '@frontrangesystems/business-os-connector-composio':
-        specifier: ^0.0.9
-        version: link:../../connectors/composio
+        specifier: ^0.0.13
+        version: 0.0.13
       '@frontrangesystems/business-os-connector-sdk':
-        specifier: ^0.0.9
-        version: link:../../packages/connector-sdk
+        specifier: ^0.0.12
+        version: 0.0.12
       '@frontrangesystems/business-os-connectors-all':
-        specifier: ^0.0.9
-        version: link:../../packages/connectors-all
+        specifier: ^0.0.13
+        version: 0.0.13(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
       '@frontrangesystems/business-os-core':
-        specifier: ^0.0.9
-        version: link:../../packages/core
+        specifier: ^0.0.12
+        version: 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
       '@frontrangesystems/business-os-db':
-        specifier: ^0.0.9
-        version: link:../../packages/db
+        specifier: ^0.0.12
+        version: 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
       '@frontrangesystems/business-os-module-prospector':
-        specifier: ^0.0.9
-        version: link:../../modules/prospector
+        specifier: ^0.0.12
+        version: 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)(@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1))(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(fastify@4.29.1)(pg@8.21.0)(react@18.3.1)
       '@frontrangesystems/business-os-module-sdk':
-        specifier: ^0.0.9
-        version: link:../../packages/module-sdk
+        specifier: ^0.0.12
+        version: 0.0.12(@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1))(react@18.3.1)
       '@frontrangesystems/business-os-runtime':
-        specifier: ^0.0.9
-        version: link:../../packages/runtime
+        specifier: ^0.0.12
+        version: 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
       '@frontrangesystems/business-os-ui':
-        specifier: ^0.0.9
-        version: link:../../packages/ui
+        specifier: ^0.0.14
+        version: 0.0.14(@frontrangesystems/business-os-connector-sdk@0.0.12)(@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
@@ -1815,6 +1815,95 @@ packages:
   '@fastify/static@7.0.4':
     resolution: {integrity: sha512-p2uKtaf8BMOZWLs6wu+Ihg7bWNBdjNgCwDza4MJtTqg+5ovKmcbgbR9Xs5/smZ1YISfzKOCNYmZV8LaCj+eJ1Q==}
 
+  '@frontrangesystems/business-os-agent-digest@0.0.12':
+    resolution: {integrity: sha512-M24UNVJmps2V9qv3SvRf97o4idVjQlpGlbQeAtHiN2G5VZr++N0ysp6mF8bZwweUVyRTjp63v0mrar9aYhW+vw==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-agent-digest/0.0.12/cf247d1650d53babb7066497ff7564294c4c4569}
+
+  '@frontrangesystems/business-os-agent-inbox-categorize@0.0.12':
+    resolution: {integrity: sha512-EDhoqzEf0fDi60OVnxkUNf39mqrd/2BJGJTvrH8fhCJWdqY4i7c10vDnLNej2Q8VLL4J8U3l56cMwAlf/XKesg==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-agent-inbox-categorize/0.0.12/318d670ea949c30d291543c32f74e010b5a0d0cc}
+
+  '@frontrangesystems/business-os-agent-inbox-cleanup@0.0.12':
+    resolution: {integrity: sha512-0Ydk3UNYjtQ6h1uIFJ8cXoI5UyYIx3xCFz4bbRoGOnx8j210fy4sl90xnoEdis9DyPlMLtY9DbZYTRs+Cqf2mQ==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-agent-inbox-cleanup/0.0.12/21e4ee2d1eff6fb0505b4be63b6a3e67aa89e2ce}
+
+  '@frontrangesystems/business-os-agent-inbox-surface@0.0.12':
+    resolution: {integrity: sha512-zlsa2T4wB7MFO0LSzVn2zHJGMta7mL+nIuveXv1w4CQwxliZ2r+yIflp23fgHDkq98LZg2mU1w1/OZAHAWMwJg==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-agent-inbox-surface/0.0.12/55da31df13c83ff1281f808563b2e198f363bafb}
+
+  '@frontrangesystems/business-os-agent-leadgen@0.0.12':
+    resolution: {integrity: sha512-f/n3bWmpbceLTVGlAqKBYvEjaCmOVw9+iREUMx1S3duIp5TTx+FG7YeyQw6xl9QDW3J3dQzBpToZXP06j7b1vQ==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-agent-leadgen/0.0.12/ed38e0743aac5a003622988850492413dad3b947}
+
+  '@frontrangesystems/business-os-agent-prospecting@0.0.12':
+    resolution: {integrity: sha512-piUYcJ+oJO9KGQP9nXGCS84uGtliN9k1u5vwkNNLzxibbi4mbt750jiliHOgUg4WhCQXTJJFz4ubWpIFWn6Obw==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-agent-prospecting/0.0.12/79fc316513c71eb9ce3fa5e34a325023e05e582a}
+
+  '@frontrangesystems/business-os-agent-sdk@0.0.12':
+    resolution: {integrity: sha512-/+Z2Nyop7PbP27hSEeEDG4EsB7Nq0IhRmibLfvoykRmMmKlnNc7uir6oKmlZdaRSYS25WCAC5LIhIwcelcd79w==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-agent-sdk/0.0.12/f9dcbb652a210ee3c96999b9a9b6684a17866ab5}
+    peerDependencies:
+      '@frontrangesystems/business-os-connector-sdk': ^0.0.12
+
+  '@frontrangesystems/business-os-agents-all@0.0.12':
+    resolution: {integrity: sha512-rENh9sNZQT4NPgN8ZhrquLnzXR/WjC0zp78WtL+F0ouQjuDazqcpvrhCTs/eE695TukLCR9jAcquXqs37D2YFA==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-agents-all/0.0.12/0ef28b08c2576bd8f22f3f29a973c87829c8727f}
+
+  '@frontrangesystems/business-os-api-contract@0.0.12':
+    resolution: {integrity: sha512-h/qP/azIVm028vzKmycv1JzmUkF7TfLLqd8Xiih0g60IaXqCUtS0oJRZO/5aPXqeABuclGdvUL1J+bLZpj2mkA==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-api-contract/0.0.12/e5f555f6e8c25ad4772e2fe5904424f5e9a59fc0}
+
+  '@frontrangesystems/business-os-connector-anthropic@0.0.12':
+    resolution: {integrity: sha512-yp4poA77LzvzoBWYtGC909E4UB6hCE/et/lXo2jwMg6lb4OzetQh977aoSNu38EVEsuN0jfJL1BpVrp1ehzwog==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-anthropic/0.0.12/d20db3ddeab77d6e85a63005cdfa9e79b45286f7}
+
+  '@frontrangesystems/business-os-connector-composio@0.0.13':
+    resolution: {integrity: sha512-8P+bVkVnbnSLLZqHQDvCte+BIyyapQS+mdir13iz2mBQXIpbNyoGXjxdllZ8S+iV6VbA5J/+yzzTICjx1u/07Q==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-composio/0.0.13/ad8426e9af471b1945277c40f4b2883d71e1bee3}
+
+  '@frontrangesystems/business-os-connector-crm-stub@0.0.12':
+    resolution: {integrity: sha512-R0yLz86/4OMXCkpLwOe7DoOpBpO3OBWlje/hxlv7AtK9hmsI5rrjF5X6maZMaqVNIg6QXUlT/qJY+JXGTg3SKg==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-crm-stub/0.0.12/62fdcd4307ed61934119bc58191c49d9f2171101}
+
+  '@frontrangesystems/business-os-connector-email-gmail-composio@0.0.13':
+    resolution: {integrity: sha512-/JBlqd5V7IxitqAu1egrUfBILG2N0mAmSbGuOpYrWm9LzWjCBFSu3cq4pHbR7nYDFPt8FUjnH5eH+WDwGlVHSQ==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-email-gmail-composio/0.0.13/1d60946cfbfe11bcdef5fd1cab3fb16919c7e2bd}
+
+  '@frontrangesystems/business-os-connector-email-inbox-gmail-composio@0.0.13':
+    resolution: {integrity: sha512-CAWX7xL+cXJvXGIsFlI9VGiygvdHPhG19709gmKcs6SskSvjNWDi0qxjl5JDK/zTvmm+3v+S2pDEA7e1Pk3w6w==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-email-inbox-gmail-composio/0.0.13/877050088c4b988f44c5b0ae4abfbdc365b0520b}
+
+  '@frontrangesystems/business-os-connector-email-inbox-imap@0.0.12':
+    resolution: {integrity: sha512-kCGB2QgHPpBtOQCvxsCnVhjqGYYVCwPtmNN+0OfAAOcaRE9p03I/h3uwema2C0j3yQXS4mYTSMF8SO1wvLGAWg==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-email-inbox-imap/0.0.12/156007b6fb4b33e644a01aa2dae1fdd17735649d}
+
+  '@frontrangesystems/business-os-connector-email-inbox-outlook-composio@0.0.13':
+    resolution: {integrity: sha512-kALo3xOpslvudBxQGh+QfLQkP5BVdwqp9bsdEyPYtLNSjO/+CRbaRWDgKBG8s1jXfkQDrfDgsxgIValy2qAacA==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-email-inbox-outlook-composio/0.0.13/69136d29f34f6089a8103abfda126b399988149f}
+
+  '@frontrangesystems/business-os-connector-email-stub@0.0.12':
+    resolution: {integrity: sha512-3mfxPmnvLYm8witluUL6BPR+YZgTI9iRWY0/uOelvQcbPI3lRxwNy0E/ORLkyvaLwpKKb0wf6MJ3Kx+kOlBgjQ==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-email-stub/0.0.12/f7945898305f9723630050285b41999150a54a7b}
+
+  '@frontrangesystems/business-os-connector-openai@0.0.12':
+    resolution: {integrity: sha512-kb757D/dXvTEVSIm5rcT9VBpziLg+fExM/bi2W7meFdvdoJmw3Ztco5F4cDKUB6dcQCSgiHSEnQxxalptTQtMg==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-openai/0.0.12/490e8e63e1e2f79b5b429ba012440962828eb15a}
+
+  '@frontrangesystems/business-os-connector-resend@0.0.12':
+    resolution: {integrity: sha512-KUb6WO/KXkqyr1t6W9kyx0hstPN6w8ugPTiUSgiTDYm2+gBDVOJ79RmNfp151b/+ISt0aYyaHH9/MRjlJ60QXQ==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-resend/0.0.12/59f44e64e0350782bb84ebb2f07ee3a5a9de73c5}
+
+  '@frontrangesystems/business-os-connector-sdk@0.0.12':
+    resolution: {integrity: sha512-APsLiGz3Nlot4soYm8gCjTPdctJVmRII9XOiISI7vrX64+jMrGgLbYiDtYmtDpXq5TUTsk6jN5wiBDnK3pnj3g==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connector-sdk/0.0.12/cbfd5877c49323120af06f3c234ac775328708bb}
+
+  '@frontrangesystems/business-os-connectors-all@0.0.13':
+    resolution: {integrity: sha512-h/wAHzgXruSKCjqghdfNZa5HnxoAwgvHKC92G5QqTwMiWZ0p1AlrrCDZy80woMh2/K2Afj/qnyPAfarBECiiPg==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-connectors-all/0.0.13/c3c0c98e4bb2efc31f010535c829bb7997152fd7}
+
+  '@frontrangesystems/business-os-core@0.0.12':
+    resolution: {integrity: sha512-ocUcTLrYXV8GqrWA+W4xTUXjJkwjky/FTT4faEfAspKqUbEA5jjIeCJLA6uv530OYKfFWts+gSGZ6WvJJ4+CaA==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-core/0.0.12/7898cab4f78eee1bf46ee0a77f63c686db7d0907}
+
+  '@frontrangesystems/business-os-db@0.0.12':
+    resolution: {integrity: sha512-IpmEeNADV4rToVwcuu3uQHgac9CkH7fscx7kvd1Wr95XV5Lg3/a0H+RIzyqCy2id3OeB0DPFxN4AyzlWSPa1Xg==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-db/0.0.12/f3a759e07968bef1c2dd5965dbcdc412ef06e749}
+
+  '@frontrangesystems/business-os-module-prospector@0.0.12':
+    resolution: {integrity: sha512-0TG8obvx6gjhNo1+ZXP1YjQQXrH+5HrGWNnaq+r8YlqGHXlAQzTkn2nObWeYAMmKpvTjELuubD8WUNs87HWmkg==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-module-prospector/0.0.12/b71bb5b22642a1ccd9173ab5079011f2fedcd38f}
+    peerDependencies:
+      fastify: ^4.28.0
+      react: ^18.0.0
+
+  '@frontrangesystems/business-os-module-sdk@0.0.12':
+    resolution: {integrity: sha512-ioc5+dAHkAWZ2PGA8t54r/OIIUmhwpdu4GxaMiNP/UGOq1J9am1Ebm7qLldzYNnCRT8/AK9qcODQPggWKEQ1tA==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-module-sdk/0.0.12/a947644d90cef105b4d3030faab5af4c183ea64c}
+    peerDependencies:
+      '@frontrangesystems/business-os-db': ^0.0.12
+      react: ^18.0.0
+
+  '@frontrangesystems/business-os-runtime@0.0.12':
+    resolution: {integrity: sha512-lqXmt1BrDN7MS/a/0xdhZLed8fQYDF455f3aoBbEfqMTvMLAEhF3woxNUhToHM0uM8lLBwMBLrPb/AIIKtSAsg==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-runtime/0.0.12/7c3378c49d052044dd659bdff9ef22073ba4d33b}
+
+  '@frontrangesystems/business-os-ui@0.0.14':
+    resolution: {integrity: sha512-lPiSgCnlIuOUn205madzvaedE6S4fChAztbMKu250I/ItZCGyk1EafgscuCZwD0kcIVYzCJxvsjnXecSPfzmrA==, tarball: https://npm.pkg.github.com/download/@frontrangesystems/business-os-ui/0.0.14/5beb2e4a155d951d13e83a17a75207f6bb024d2d}
+
   '@isaacs/cliui@8.0.2':
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
     engines: {node: '>=12'}
@@ -2608,6 +2697,9 @@ packages:
     resolution: {integrity: sha512-1nz4AfT+v5wOiKgq+7PUJIewYCyqf2psbJUOFjNyprNoGEcGnHg///XbylwUIXBtGpZDhHCGkvgQytJh5kI2ew==}
     engines: {node: '>=18.0.0'}
 
+  '@stablelib/base64@1.0.1':
+    resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
+
   '@turbo/darwin-64@2.9.17':
     resolution: {integrity: sha512-io5jn5RDeU+9YV78rWhwG++HD/OZ/Lxg1sg93+jDGKQNP3UDxY6RX2dmarbCILhNxNuAM8FH3WgGMY9E96Mf8w==}
     cpu: [x64]
@@ -2734,9 +2826,6 @@ packages:
 
   '@zone-eu/mailsplit@5.4.12':
     resolution: {integrity: sha512-w7Gy+NvjZ0MiXm8F6zfjImAqcTONKDImgWVBjDKQVFUXWuz3VFM5levNArkL2M877ajql5+bkS2pDV56injlmg==}
-
-  '@stablelib/base64@1.0.1':
-    resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
 
   abort-controller@3.0.0:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
@@ -5206,6 +5295,457 @@ snapshots:
       fastq: 1.20.1
       glob: 10.5.0
 
+  '@frontrangesystems/business-os-agent-digest@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)':
+    dependencies:
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      '@frontrangesystems/business-os-db': 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
+      drizzle-orm: 0.33.0(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/react'
+      - '@types/sql.js'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - react
+      - sql.js
+      - sqlite3
+
+  '@frontrangesystems/business-os-agent-inbox-categorize@0.0.12':
+    dependencies:
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-agent-inbox-cleanup@0.0.12':
+    dependencies:
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-agent-inbox-surface@0.0.12':
+    dependencies:
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-agent-leadgen@0.0.12':
+    dependencies:
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-agent-prospecting@0.0.12':
+    dependencies:
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-agent-sdk@0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)':
+    dependencies:
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-agents-all@0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)':
+    dependencies:
+      '@frontrangesystems/business-os-agent-digest': 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
+      '@frontrangesystems/business-os-agent-inbox-categorize': 0.0.12
+      '@frontrangesystems/business-os-agent-inbox-cleanup': 0.0.12
+      '@frontrangesystems/business-os-agent-inbox-surface': 0.0.12
+      '@frontrangesystems/business-os-agent-leadgen': 0.0.12
+      '@frontrangesystems/business-os-agent-prospecting': 0.0.12
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@frontrangesystems/business-os-connector-sdk'
+      - '@libsql/client'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/react'
+      - '@types/sql.js'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - react
+      - sql.js
+      - sqlite3
+
+  '@frontrangesystems/business-os-api-contract@0.0.12':
+    dependencies:
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-connector-anthropic@0.0.12':
+    dependencies:
+      '@anthropic-ai/sdk': 0.40.1
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - encoding
+
+  '@frontrangesystems/business-os-connector-composio@0.0.13':
+    dependencies:
+      '@composio/core': 0.10.0(zod@3.25.76)
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - ws
+
+  '@frontrangesystems/business-os-connector-crm-stub@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)':
+    dependencies:
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      '@frontrangesystems/business-os-db': 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
+      drizzle-orm: 0.33.0(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
+      postgres: 3.4.9
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/react'
+      - '@types/sql.js'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - prisma
+      - react
+      - sql.js
+      - sqlite3
+
+  '@frontrangesystems/business-os-connector-email-gmail-composio@0.0.13':
+    dependencies:
+      '@frontrangesystems/business-os-connector-composio': 0.0.13
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - ws
+
+  '@frontrangesystems/business-os-connector-email-inbox-gmail-composio@0.0.13':
+    dependencies:
+      '@frontrangesystems/business-os-connector-composio': 0.0.13
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - ws
+
+  '@frontrangesystems/business-os-connector-email-inbox-imap@0.0.12':
+    dependencies:
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      imapflow: 1.4.0
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-connector-email-inbox-outlook-composio@0.0.13':
+    dependencies:
+      '@frontrangesystems/business-os-connector-composio': 0.0.13
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - ws
+
+  '@frontrangesystems/business-os-connector-email-stub@0.0.12':
+    dependencies:
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-connector-openai@0.0.12':
+    dependencies:
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      openai: 4.104.0(zod@3.25.76)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - encoding
+      - ws
+
+  '@frontrangesystems/business-os-connector-resend@0.0.12':
+    dependencies:
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-connector-sdk@0.0.12':
+    dependencies:
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-connectors-all@0.0.13(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)':
+    dependencies:
+      '@frontrangesystems/business-os-connector-anthropic': 0.0.12
+      '@frontrangesystems/business-os-connector-crm-stub': 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
+      '@frontrangesystems/business-os-connector-email-gmail-composio': 0.0.13
+      '@frontrangesystems/business-os-connector-email-inbox-gmail-composio': 0.0.13
+      '@frontrangesystems/business-os-connector-email-inbox-imap': 0.0.12
+      '@frontrangesystems/business-os-connector-email-inbox-outlook-composio': 0.0.13
+      '@frontrangesystems/business-os-connector-email-stub': 0.0.12
+      '@frontrangesystems/business-os-connector-openai': 0.0.12
+      '@frontrangesystems/business-os-connector-resend': 0.0.12
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      '@frontrangesystems/business-os-db': 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/react'
+      - '@types/sql.js'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - encoding
+      - expo-sqlite
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - prisma
+      - react
+      - sql.js
+      - sqlite3
+      - ws
+
+  '@frontrangesystems/business-os-core@0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)':
+    dependencies:
+      '@fastify/multipart': 8.3.1
+      '@fastify/static': 7.0.4
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+      '@frontrangesystems/business-os-api-contract': 0.0.12
+      '@frontrangesystems/business-os-db': 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
+      '@sentry/node': 8.55.2
+      argon2: 0.41.1
+      drizzle-orm: 0.33.0(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
+      fastify: 4.29.1
+      libsodium-wrappers: 0.7.16
+      otpauth: 9.5.1
+      pino: 9.14.0
+      postgres: 3.4.9
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@frontrangesystems/business-os-connector-sdk'
+      - '@libsql/client'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/react'
+      - '@types/sql.js'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - prisma
+      - react
+      - sql.js
+      - sqlite3
+      - supports-color
+
+  '@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)':
+    dependencies:
+      drizzle-orm: 0.33.0(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
+      postgres: 3.4.9
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/react'
+      - '@types/sql.js'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - prisma
+      - react
+      - sql.js
+      - sqlite3
+
+  '@frontrangesystems/business-os-module-prospector@0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)(@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1))(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(fastify@4.29.1)(pg@8.21.0)(react@18.3.1)':
+    dependencies:
+      '@frontrangesystems/business-os-core': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
+      '@frontrangesystems/business-os-module-sdk': 0.0.12(@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1))(react@18.3.1)
+      drizzle-orm: 0.33.0(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
+      fastify: 4.29.1
+      postgres: 3.4.9
+      react: 18.3.1
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@frontrangesystems/business-os-connector-sdk'
+      - '@frontrangesystems/business-os-db'
+      - '@libsql/client'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/react'
+      - '@types/sql.js'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - prisma
+      - sql.js
+      - sqlite3
+      - supports-color
+
+  '@frontrangesystems/business-os-module-sdk@0.0.12(@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@frontrangesystems/business-os-db': 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
+      react: 18.3.1
+      zod: 3.25.76
+
+  '@frontrangesystems/business-os-runtime@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)':
+    dependencies:
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+      '@frontrangesystems/business-os-connector-sdk': 0.0.12
+      '@frontrangesystems/business-os-core': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
+      '@frontrangesystems/business-os-db': 0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1)
+      '@frontrangesystems/business-os-module-sdk': 0.0.12(@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1))(react@18.3.1)
+      croner: 8.1.2
+      drizzle-orm: 0.33.0(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
+      pg-boss: 10.4.2
+      pino: 9.14.0
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/react'
+      - '@types/sql.js'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - pg-native
+      - postgres
+      - prisma
+      - react
+      - sql.js
+      - sqlite3
+      - supports-color
+
+  '@frontrangesystems/business-os-ui@0.0.14(@frontrangesystems/business-os-connector-sdk@0.0.12)(@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)':
+    dependencies:
+      '@frontrangesystems/business-os-agent-sdk': 0.0.12(@frontrangesystems/business-os-connector-sdk@0.0.12)
+      '@frontrangesystems/business-os-module-sdk': 0.0.12(@frontrangesystems/business-os-db@0.0.12(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-alert-dialog': 1.1.16(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-dialog': 1.1.16(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@frontrangesystems/business-os-connector-sdk'
+      - '@frontrangesystems/business-os-db'
+      - '@types/react'
+      - '@types/react-dom'
+
   '@isaacs/cliui@8.0.2':
     dependencies:
       string-width: 5.1.2
@@ -6074,6 +6614,8 @@ snapshots:
       '@smithy/core': 3.25.0
       tslib: 2.8.1
 
+  '@stablelib/base64@1.0.1': {}
+
   '@turbo/darwin-64@2.9.17':
     optional: true
 
@@ -6224,8 +6766,6 @@ snapshots:
       libbase64: 1.3.0
       libmime: 5.3.8
       libqp: 2.1.1
-
-  '@stablelib/base64@1.0.1': {}
 
   abort-controller@3.0.0:
     dependencies:
