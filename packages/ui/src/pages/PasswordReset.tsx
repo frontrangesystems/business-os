@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
 /**
  * Two anonymous routes in one file:
@@ -90,6 +91,7 @@ export function PasswordResetRequest(): JSX.Element {
 export function PasswordResetComplete(): JSX.Element {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const { refresh } = useAuth();
   const token = params.get('token') ?? '';
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -113,6 +115,9 @@ export function PasswordResetComplete(): JSX.Element {
         method: 'POST',
         body: { token, password },
       });
+      // Server revokes all sessions on reset. Refresh auth state to anonymous
+      // before navigating so the Login page doesn't redirect already-authenticated users.
+      await refresh();
       navigate('/login', { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
