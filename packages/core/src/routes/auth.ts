@@ -214,11 +214,16 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       );
 
       // Send the reset email via Resend (no-ops if RESEND_API_KEY is absent).
+      // Derive the origin from the request: trust X-Forwarded-Proto (set by Fly.io's
+      // proxy) for the scheme, and Host for the hostname. PUBLIC_URL overrides both
+      // when set (useful for local dev tunnels or custom domains).
       const publicUrl = process.env['PUBLIC_URL'];
-      if (!publicUrl) {
-        req.log.warn('PUBLIC_URL is not set — password reset email will contain a relative URL');
-      }
-      const resetUrl = `${publicUrl ?? ''}/reset-password?token=${issued.token}`;
+      const origin = publicUrl ?? (() => {
+        const proto = (req.headers['x-forwarded-proto'] as string | undefined) ?? req.protocol ?? 'https';
+        const host = req.headers['host'] ?? 'localhost';
+        return `${proto}://${host}`;
+      })();
+      const resetUrl = `${origin}/reset-password?token=${issued.token}`;
       await sendPasswordResetEmail(parsed.data.email, resetUrl).catch((err: unknown) => {
         // Log but don't fail the request — user still gets { ok: true }.
         req.log.error({ err }, 'failed to send password reset email');
