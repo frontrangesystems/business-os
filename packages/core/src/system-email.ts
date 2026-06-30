@@ -48,10 +48,11 @@ export async function sendPasswordResetEmail(
   });
 
   if (error) {
-    // Log the raw SDK error object (not interpolated into a string — Resend error.message
-    // can contain the recipient address which we must not propagate into thrown messages).
-    // eslint-disable-next-line no-console
-    console.error('[system-email] Resend error sending password reset email:', error);
-    throw new Error('Failed to send password reset email');
+    // Throw with the SDK error attached so the caller's req.log.error({ err }) captures
+    // the full Resend error object in structured JSON. Don't interpolate error.message
+    // into the thrown message — it can contain the recipient address.
+    const wrapped = new Error('Failed to send password reset email');
+    (wrapped as Error & { cause?: unknown }).cause = error;
+    throw wrapped;
   }
 }
