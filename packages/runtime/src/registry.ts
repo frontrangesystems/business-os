@@ -28,8 +28,15 @@ import type { ModulePackage } from '@frontrangesystems/business-os-module-sdk';
 // agents typed with narrower settings (e.g. `AgentRun<{...settings...}, unknown>`)
 // remain assignable. Function-typed properties are strictly variant under
 // `strictFunctionTypes`; method shorthands are bivariant in parameters.
+//
+// `manifest` uses `AgentManifest<any>` (not `AgentManifest<z.ZodTypeAny>`) for
+// the same reason: adding `actions?: Record<string, ActionDefinition<z.infer<T>>>`
+// made T invariant in AgentManifest, so `AgentManifest<ZodObject<...>>` is not
+// assignable to `AgentManifest<ZodTypeAny>` under strictFunctionTypes. `any`
+// bypasses the invariant check — the registry never needs the specific type.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface RegisteredAgent {
-  manifest: AgentManifest<z.ZodTypeAny>;
+  manifest: AgentManifest<any>;
   run(ctx: AgentContext<unknown>, input: unknown): Promise<AgentResult>;
 }
 
