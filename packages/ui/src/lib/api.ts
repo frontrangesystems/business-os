@@ -206,7 +206,6 @@ export const Api = {
   createUser: (body: {
     email: string;
     displayName?: string;
-    password: string;
     roles?: string[];
   }) => api<{ user: ManagedUser }>('/api/users', { method: 'POST', body }),
   setUserRoles: (id: string, roles: string[]) =>

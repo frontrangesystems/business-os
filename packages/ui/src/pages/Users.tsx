@@ -7,8 +7,9 @@ import { useAuth } from '../lib/auth';
  * Admin-only user management.
  *
  * Lists every user with their roles + active state, lets an admin add a user
- * (email + display name + admin-set initial password + role checkboxes), edit a
- * user's roles, and activate/deactivate. Server enforces the same admin gate
+ * (email + display name + role checkboxes), edit a user's roles, and
+ * activate/deactivate. New users receive an invite email to set their own
+ * password. Server enforces the same admin gate
  * and the last-admin lockout guards — this page surfaces those errors inline.
  */
 
@@ -83,7 +84,6 @@ function AddUserForm(props: { onCreated: () => Promise<void>; roleOptions: Array
   const { roleOptions } = props;
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [password, setPassword] = useState('');
   const [roles, setRoles] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,21 +99,15 @@ function AddUserForm(props: { onCreated: () => Promise<void>; roleOptions: Array
     e.preventDefault();
     setError(null);
     setOk(false);
-    if (password.length < 12) {
-      setError('Password must be at least 12 characters.');
-      return;
-    }
     setBusy(true);
     try {
       await Api.createUser({
         email: email.trim(),
         displayName: displayName.trim() || undefined,
-        password,
         roles,
       });
       setEmail('');
       setDisplayName('');
-      setPassword('');
       setRoles([]);
       setOk(true);
       await props.onCreated();
@@ -127,28 +121,7 @@ function AddUserForm(props: { onCreated: () => Promise<void>; roleOptions: Array
   return (
     <section className="card p-6">
       <h2 className="section-heading mb-4">Add a user</h2>
-      {/* autocomplete="off" + a decoy hidden field defends against browser
-          autofill leaking the admin's own saved credentials into a new-user
-          form. The password field is autoComplete="new-password" per policy. */}
       <form onSubmit={submit} autoComplete="off">
-        {/* Decoy fields: some browsers ignore autocomplete=off but will fill
-            the first username/password pair they find — sacrifice these. */}
-        <input
-          type="text"
-          name="prevent_autofill_username"
-          autoComplete="username"
-          className="hidden"
-          tabIndex={-1}
-          aria-hidden="true"
-        />
-        <input
-          type="password"
-          name="prevent_autofill_password"
-          autoComplete="new-password"
-          className="hidden"
-          tabIndex={-1}
-          aria-hidden="true"
-        />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="new-user-email">
@@ -178,25 +151,6 @@ function AddUserForm(props: { onCreated: () => Promise<void>; roleOptions: Array
             />
           </div>
           <div>
-            <label className="label" htmlFor="new-user-password">
-              Initial password
-            </label>
-            <input
-              id="new-user-password"
-              type="password"
-              className="input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              minLength={12}
-              required
-            />
-            <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
-              12+ characters. Share it with the user out-of-band — there is no
-              email invite.
-            </p>
-          </div>
-          <div>
             <span className="label">Roles</span>
             <div className="mt-1 flex flex-col gap-1.5">
               {roleOptions.map((r) => (
@@ -213,7 +167,11 @@ function AddUserForm(props: { onCreated: () => Promise<void>; roleOptions: Array
           </div>
         </div>
         {error && <div className="mt-3 text-sm text-bad">{error}</div>}
-        {ok && <div className="mt-3 text-sm text-ink-500 dark:text-ink-400">User created.</div>}
+        {ok && (
+          <div className="mt-3 text-sm text-ink-500 dark:text-ink-400">
+            User created — invite email sent.
+          </div>
+        )}
         <div className="mt-4">
           <button type="submit" className="btn-primary" disabled={busy}>
             {busy ? 'Creating…' : 'Add user'}
