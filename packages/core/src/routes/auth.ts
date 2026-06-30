@@ -223,7 +223,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         const host = req.headers['host'] ?? 'localhost';
         return `${proto}://${host}`;
       })();
-      const resetUrl = `${origin}/reset-password?token=${issued.token}`;
+      const resetUrl = `${origin}/reset?token=${issued.token}`;
       await sendPasswordResetEmail(parsed.data.email, resetUrl).catch((err: unknown) => {
         // Log but don't fail the request — user still gets { ok: true }.
         req.log.error({ err }, 'failed to send password reset email');
