@@ -90,7 +90,7 @@ export function PasswordResetRequest(): JSX.Element {
 export function PasswordResetComplete(): JSX.Element {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const [token, setToken] = useState(params.get('token') ?? '');
+  const token = params.get('token') ?? '';
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -138,21 +138,6 @@ export function PasswordResetComplete(): JSX.Element {
             Enter the token from your email and choose a new password (12+ characters).
           </p>
         </header>
-
-        <div>
-          <label htmlFor="token" className="label">
-            Token
-          </label>
-          <input
-            id="token"
-            type="text"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            className="input-mono"
-            required
-            spellCheck={false}
-          />
-        </div>
 
         <div>
           <label htmlFor="password" className="label">
