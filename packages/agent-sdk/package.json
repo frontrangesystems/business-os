@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-agent-sdk",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "The interface every Business OS agent implements.",
   "type": "module",
   "main": "./dist/index.js",
