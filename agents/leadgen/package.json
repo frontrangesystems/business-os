@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-agent-leadgen",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "Shared lead-generation agent. Drafts prospects + outreach via the llm capability.",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-agent-inbox-surface",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "Score recent unread messages for human-response need and return a ranked digest of the top items.",
   "type": "module",
   "main": "./dist/index.js",
