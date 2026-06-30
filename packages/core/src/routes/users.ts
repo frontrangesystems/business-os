@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
@@ -9,14 +10,18 @@ import {
 } from '@frontrangesystems/business-os-db';
 import { requireUser, requireRole } from './_require-user.js';
 import { hashPassword } from '../auth/passwords.js';
+import { issuePasswordResetToken } from '../auth/password-reset.js';
+import { sendPasswordResetEmail } from '../system-email.js';
 
 /**
  * Admin-driven user management.
  *
  * Every route here is gated `[requireUser, requireRole('admin')]` — only an
- * admin can list, create, re-role, rename, or (de)activate users. There is no
- * email-invite flow: an admin sets the new user's initial password directly
- * (email invites need the system-email connector — out of scope for this slice).
+ * admin can list, create, re-role, rename, or (de)activate users.
+ *
+ * New users are created without a known password. A reset token is issued and
+ * emailed immediately so the user can set their own password via the same
+ * /reset flow used for forgot-password.
  *
  * Last-admin lockout guards: the system must always retain at least one ACTIVE
  * user holding the 'admin' role. We refuse any operation that would drop the
@@ -24,8 +29,6 @@ import { hashPassword } from '../auth/passwords.js';
  * deactivating the last admin). This is enforced server-side regardless of who
  * the actor is — an admin can't lock everyone (including themselves) out.
  */
-
-const MIN_PASSWORD_LEN = 12;
 
 const PatchUserBody = z
   .object({
@@ -83,7 +86,6 @@ export function registerUserRoutes(
   const CreateUserBody = z.object({
     email: z.string().email(),
     displayName: z.string().trim().min(1).optional(),
-    password: z.string().min(MIN_PASSWORD_LEN),
     roles: RolesArray.optional(),
   });
 
@@ -136,7 +138,7 @@ export function registerUserRoutes(
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_input', issues: parsed.error.issues });
     }
-    const { email, displayName, password } = parsed.data;
+    const { email, displayName } = parsed.data;
     const roles = parsed.data.roles ?? [];
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -151,7 +153,9 @@ export function registerUserRoutes(
       return reply.code(409).send({ error: 'email_taken' });
     }
 
-    const passwordHash = await hashPassword(password);
+    // Hash a random secret nobody knows — the user sets their real password
+    // via the invite email (same /reset flow as forgot-password).
+    const passwordHash = await hashPassword(randomUUID());
 
     const inserted = await req.deps.db
       .insert(users)
@@ -173,6 +177,18 @@ export function registerUserRoutes(
     }
 
     await req.audit('admin.user.created', { userId: created.id, email: normalizedEmail, roles });
+
+    // Issue a password-reset token and email it so the new user can set their password.
+    const issued = await issuePasswordResetToken(req.deps.db, normalizedEmail);
+    if (issued) {
+      const proto = (req.headers['x-forwarded-proto'] as string | undefined) ?? req.protocol ?? 'https';
+      const host = req.headers['host'] ?? 'localhost';
+      const origin = process.env['PUBLIC_URL'] ?? `${proto}://${host}`;
+      const resetUrl = `${origin}/reset?token=${issued.token}`;
+      await sendPasswordResetEmail(normalizedEmail, resetUrl).catch((err: unknown) => {
+        req.log.error({ err }, 'failed to send invite email to new user');
+      });
+    }
 
     return reply.code(201).send({
       user: {
