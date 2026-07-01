@@ -371,3 +371,59 @@ export default defineModule({
 });
 
 export { prospectorBidFeedback, bidWatcherSeen } from './schema.js';
+
+// ---------------------------------------------------------------------------
+// Service layer — call these from agents/modules instead of querying tables
+// directly. The function owns the join, the schema, and the return shape.
+// ---------------------------------------------------------------------------
+
+export interface FeedbackExample {
+  rating: 1 | -1;
+  title: string;
+  location: string | null;
+  estimatedValue: number | null;
+  score: number | null;
+  scoreReason: string | null;
+}
+
+/**
+ * Returns the most recent operator feedback examples (thumbs + bid context)
+ * for use as few-shot examples in LLM scoring prompts.
+ *
+ * Pass `ctx.db` (cast to `ReturnType<typeof import('drizzle-orm/postgres-js').drizzle>`)
+ * or call `buildDb()` for a standalone connection.
+ */
+export async function getFeedbackExamples(
+  db: ReturnType<typeof drizzle>,
+  limit: number,
+): Promise<FeedbackExample[]> {
+  if (limit === 0) return [];
+  const rows = await db
+    .select({
+      rating: prospectorBidFeedback.rating,
+      title: bidWatcherSeen.title,
+      location: bidWatcherSeen.location,
+      estimatedValue: bidWatcherSeen.estimatedValue,
+      score: bidWatcherSeen.score,
+      scoreReason: bidWatcherSeen.scoreReason,
+    })
+    .from(prospectorBidFeedback)
+    .innerJoin(
+      bidWatcherSeen,
+      and(
+        eq(bidWatcherSeen.source, prospectorBidFeedback.source),
+        eq(bidWatcherSeen.externalId, prospectorBidFeedback.externalId),
+      ),
+    )
+    .orderBy(desc(prospectorBidFeedback.updatedAt))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    rating: (r.rating === 1 ? 1 : -1) as 1 | -1,
+    title: r.title ?? 'Untitled',
+    location: r.location,
+    estimatedValue: r.estimatedValue !== null ? Number(r.estimatedValue) : null,
+    score: r.score,
+    scoreReason: r.scoreReason,
+  }));
+}
