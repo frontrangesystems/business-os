@@ -293,16 +293,17 @@ export async function runAgent(
     triggeredBy: trigger.triggeredBy,
   });
 
-  const { ctx } = await buildContext(deps, slug, runId, trigger);
-
-  // Validate input against the agent's inputSchema before calling run().
-  const validatedInput = agent.manifest.inputSchema
-    ? agent.manifest.inputSchema.parse(input)
-    : input;
-
   const childLogger = deps.logger.child({ agent_slug: slug, run_id: runId });
 
+  // Context building + input validation live INSIDE the try: if either
+  // throws (bad settings, input that fails the agent's schema), the run row
+  // must still be finalized ok=false — otherwise it sits "running" forever
+  // in the UI with the real error only in the process log.
   try {
+    const { ctx } = await buildContext(deps, slug, runId, trigger);
+    const validatedInput = agent.manifest.inputSchema
+      ? agent.manifest.inputSchema.parse(input)
+      : input;
     const result = await agent.run(ctx, validatedInput);
     await deps.db
       .update(agentRuns)

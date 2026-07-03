@@ -157,6 +157,37 @@ d('runAgent (real Postgres)', () => {
     expect(rows[0]!.summary).toMatch(/error: kaboom/);
   });
 
+  it('finalizes the run row ok=false when input fails the inputSchema (setup error)', async () => {
+    registry.registerAgent({
+      manifest: {
+        slug: 'strict-input',
+        version: '0.0.1',
+        displayName: 'Strict Input',
+        description: 'requires a non-empty name in input',
+        requiredConnectors: [] as const,
+        settingsSchema: z.object({}),
+        inputSchema: z.object({ name: z.string().min(1) }),
+        schedule: { kind: 'manual' as const },
+      },
+      run: async () => ({ ok: true, summary: 'never reached' }),
+    });
+
+    await expect(
+      runAgent(
+        { db: env.db, registry, connectors: resolver, logger },
+        'strict-input',
+        { name: '' },
+        { kind: 'manual', detail: 'matt' },
+      ),
+    ).rejects.toThrow();
+
+    // The row must NOT be left dangling as "running" — setup errors stamp it.
+    const rows = await env.db.select().from(agentRuns).where(eq(agentRuns.agentSlug, 'strict-input'));
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.ok).toBe(false);
+    expect(rows[0]!.endedAt).toBeTruthy();
+  });
+
   it('throws MissingAgentBindingError when the agent has no binding for a required capability', async () => {
     // Remove the binding row entirely — the agent should refuse to run.
     await env.db
