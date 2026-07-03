@@ -134,6 +134,12 @@ export interface AgentInventory {
   listAgents(): RegisteredAgentLike[];
   getAgent(slug: string): RegisteredAgentLike;
   listConnectorProviders(capability: string): RegisteredConnectorProviderLike[];
+  /**
+   * Optional — every capability with at least one registered provider.
+   * Older Registry shapes may not implement it; callers fall back to the
+   * framework's built-in capability list.
+   */
+  listCapabilities?(): string[];
   getConnectorProvider(
     capability: string,
     slug: string,
