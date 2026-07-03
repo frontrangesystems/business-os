@@ -101,6 +101,12 @@ export function zodToFieldSchema(schema: z.ZodTypeAny): FieldSchema {
       s = s._def.innerType as z.ZodTypeAny;
       continue;
     }
+    if (s instanceof z.ZodEffects) {
+      // preprocess/refine/transform wrapper — render the inner schema.
+      // Validation still runs through the full effects chain server-side.
+      s = s._def.schema as z.ZodTypeAny;
+      continue;
+    }
     break;
   }
   const description = s.description ?? schema.description;
