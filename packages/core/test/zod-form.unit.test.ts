@@ -95,4 +95,15 @@ describe('zodToFieldSchema', () => {
     expect(out.fields.maxPerRun).toMatchObject({ type: 'number', int: true, max: 50, default: 10 });
     expect(out.fields.llm).toMatchObject({ type: 'object' });
   });
+
+  it('unwraps ZodEffects (preprocess/refine) and renders the inner schema', () => {
+    const inner = z.object({
+      reportMissedBid: z.object({ source: z.string().min(1) }).optional(),
+    });
+    const schema = z.preprocess((raw) => raw ?? {}, inner);
+    const out = zodToFieldSchema(schema);
+    expect(out.type).toBe('object');
+    if (out.type !== 'object') throw new Error('expected object');
+    expect(out.fields.reportMissedBid).toMatchObject({ type: 'object', optional: true });
+  });
 });
