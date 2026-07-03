@@ -178,6 +178,17 @@ export class Registry {
     return byCap ? ([...byCap.values()] as RegisteredConnectorProvider<C>[]) : [];
   }
 
+  /**
+   * Every capability that has at least one registered provider. Client
+   * installs can register connectors for capabilities the framework doesn't
+   * ship (via ConnectorCapabilityMap module augmentation) — the admin API
+   * unions this with the built-in capability list so those show up in the
+   * operator UI.
+   */
+  listCapabilities(): string[] {
+    return [...this.providers.keys()];
+  }
+
   // ---- Modules ----
 
   registerModule<TSettings extends z.ZodTypeAny>(

@@ -72,6 +72,23 @@ function fakeInventory(): AgentInventory {
     externalOAuth: { provider: 'composio' as const, toolkit: 'gmail' },
     settingsSchema: z.object({}),
   };
+  /**
+   * Client-custom capability (ConnectorCapabilityMap module augmentation in
+   * a client install — e.g. C&M's `bidboard`). Not on the framework's
+   * built-in list; /api/connectors must union it in via listCapabilities().
+   */
+  const bidboardManifest = {
+    slug: 'centralbidding',
+    capability: 'bidboard',
+    version: '0.1.0',
+    displayName: 'Central Bidding',
+    authKind: 'custom' as const,
+    settingsSchema: z.object({}),
+    credentialsSchema: z.object({
+      username: z.string(),
+      password: z.string().describe('secret: password'),
+    }),
+  };
 
   return {
     listAgents: () => [{ manifest: agentManifest }],
@@ -86,6 +103,7 @@ function fakeInventory(): AgentInventory {
           { manifest: emailProviderManifest, capability: 'email' },
           { manifest: gmailComposioManifest, capability: 'email' },
         ];
+      if (cap === 'bidboard') return [{ manifest: bidboardManifest, capability: 'bidboard' }];
       return [];
     },
     getConnectorProvider: (cap: string, slug: string) => {
@@ -95,8 +113,11 @@ function fakeInventory(): AgentInventory {
         return { manifest: emailProviderManifest, capability: 'email' };
       if (cap === 'email' && slug === 'email-gmail-composio')
         return { manifest: gmailComposioManifest, capability: 'email' };
+      if (cap === 'bidboard' && slug === 'centralbidding')
+        return { manifest: bidboardManifest, capability: 'bidboard' };
       throw new Error('not found');
     },
+    listCapabilities: () => ['llm', 'email', 'bidboard'],
   };
 }
 
@@ -269,6 +290,30 @@ d('admin/operator API (real Postgres)', () => {
     const llm = body.capabilities.find((c: { capability: string }) => c.capability === 'llm');
     expect(llm.providers.map((p: { slug: string }) => p.slug)).toContain('anthropic');
     expect(llm.instances).toEqual([]);
+  });
+
+  it('GET /api/connectors includes client-custom capabilities from listCapabilities()', async () => {
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/connectors',
+      headers: { cookie },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json();
+    const caps = body.capabilities.map((c: { capability: string }) => c.capability);
+    // Built-in capabilities stay present even with zero providers...
+    for (const cap of ['email', 'email-inbox', 'crm', 'llm', 'file-storage']) {
+      expect(caps).toContain(cap);
+    }
+    // ...and the client-custom capability is unioned in.
+    const bidboard = body.capabilities.find(
+      (c: { capability: string }) => c.capability === 'bidboard',
+    );
+    expect(bidboard).toBeDefined();
+    expect(bidboard.providers.map((p: { slug: string }) => p.slug)).toEqual(['centralbidding']);
+    // Secret-marked credential fields survive the schema translation.
+    const passwordField = bidboard.providers[0].credentialsSchema.fields.password;
+    expect(passwordField.secret).toBe(true);
   });
 
   it('connector lifecycle: create → set credentials → activate → cascade delete', async () => {

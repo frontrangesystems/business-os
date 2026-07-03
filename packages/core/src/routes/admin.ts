@@ -960,11 +960,12 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     reply.header('cache-control', 'no-store');
     // Build the capability → providers map from the registry, then attach the
     // operator-configured instances per capability.
-    const caps = new Set<string>();
-    // Walk known capabilities — the registry doesn't expose `listCapabilities`,
-    // so we drain the type-registry by probing each known key. New capabilities
-    // added to ConnectorCapabilityMap need adding here too.
-    for (const cap of ['email', 'email-inbox', 'crm', 'llm', 'file-storage']) caps.add(cap);
+    // Built-in capabilities always show (even with zero providers), and any
+    // capability a registered provider declares is unioned in — client
+    // installs can add capabilities via ConnectorCapabilityMap augmentation
+    // (e.g. C&M's `bidboard`).
+    const caps = new Set<string>(['email', 'email-inbox', 'crm', 'llm', 'file-storage']);
+    for (const cap of req.deps.inventory!.listCapabilities?.() ?? []) caps.add(cap);
 
     const instances = await req.deps.db
       .select()
