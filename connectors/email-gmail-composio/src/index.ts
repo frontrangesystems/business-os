@@ -210,7 +210,7 @@ export const manifest = {
   slug: 'email-gmail-composio',
   capability: 'email' as const,
   version: '0.0.1',
-  displayName: 'Gmail (via Composio)',
+  displayName: 'Gmail',
   // `api-key` here = the Composio platform API key; per-account OAuth state
   // lives at Composio and is referenced by extra.userId. From the framework's
   // POV this looks like an api-key connector even though the underlying
