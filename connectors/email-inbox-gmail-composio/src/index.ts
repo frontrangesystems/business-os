@@ -353,7 +353,7 @@ export const manifest = {
   slug: 'email-inbox-gmail-composio',
   capability: 'email-inbox' as const,
   version: '0.0.1',
-  displayName: 'Gmail Inbox (via Composio)',
+  displayName: 'Gmail Inbox',
   authKind: 'api-key' as const,
   externalOAuth: {
     provider: 'composio' as const,

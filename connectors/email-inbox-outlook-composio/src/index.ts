@@ -321,7 +321,7 @@ export const manifest = {
   slug: 'email-inbox-outlook-composio',
   capability: 'email-inbox' as const,
   version: '0.0.3',
-  displayName: 'Outlook Inbox (via Composio)',
+  displayName: 'Outlook Inbox',
   authKind: 'api-key' as const,
   externalOAuth: {
     provider: 'composio' as const,
