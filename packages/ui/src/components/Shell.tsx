@@ -25,12 +25,33 @@ function isVisibleTo(
   return true; // everyone (default) or unknown
 }
 
+const NAV_OPEN_KEY = 'businessos.nav.open';
+
+function readNavOpen(): boolean {
+  try {
+    // Default open; only a stored 'false' collapses the sidebar on load.
+    return window.localStorage.getItem(NAV_OPEN_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
 export function Shell(): JSX.Element {
   const { state, isAdmin, logout } = useAuth();
   const branding = useBranding();
   const navigate = useNavigate();
   const user = state.kind === 'authenticated' ? state.user : null;
   const [modules, setModules] = useState<ModuleNav[]>([]);
+  const [navOpen, setNavOpen] = useState<boolean>(readNavOpen);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NAV_OPEN_KEY, String(navOpen));
+    } catch {
+      // localStorage unavailable (private mode / SSR) — collapse state just
+      // won't persist, which is fine.
+    }
+  }, [navOpen]);
 
   useEffect(() => {
     if (state.kind !== 'authenticated') return;
@@ -64,7 +85,13 @@ export function Shell(): JSX.Element {
 
   return (
     <div className="flex h-full min-h-screen bg-ink-50 text-ink-900 dark:bg-ink-950 dark:text-ink-100">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-ink-200 bg-white dark:border-ink-800 dark:bg-ink-900">
+      <aside
+        className={`shrink-0 overflow-hidden border-r border-ink-200 bg-white transition-[width] duration-300 ease-in-out dark:border-ink-800 dark:bg-ink-900 ${
+          navOpen ? 'w-60' : 'w-0 border-r-0'
+        }`}
+      >
+        {/* Fixed inner width so labels don't reflow while the rail animates. */}
+        <div className="flex h-full w-60 flex-col">
         <div
           className={
             branding?.headerBackground === 'dark'
@@ -145,9 +172,41 @@ export function Shell(): JSX.Element {
             Sign out
           </button>
         </div>
+        </div>
       </aside>
-      <main className="flex-1 overflow-y-auto">
-        <Outlet />
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center gap-3 border-b border-ink-200 bg-white/80 px-4 py-3 backdrop-blur dark:border-ink-800 dark:bg-ink-900/80">
+          <button
+            type="button"
+            onClick={() => setNavOpen((o) => !o)}
+            aria-label={navOpen ? 'Collapse menu' : 'Open menu'}
+            aria-expanded={navOpen}
+            className="rounded-md p-2 text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-100"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+          {!navOpen && (
+            <span className="truncate text-sm font-semibold tracking-tight">
+              {branding?.businessName ?? 'Business OS'}
+            </span>
+          )}
+        </header>
+        <div className="flex-1 overflow-y-auto">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
