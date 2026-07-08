@@ -80,6 +80,7 @@ function normalizeAudience(value: unknown): WireAudience {
 
 const SETTINGS_AGENT_SCOPE = (slug: string): string => `agent:${slug}`;
 const SETTINGS_AGENT_BINDINGS_SCOPE = (slug: string): string => `agent-bindings:${slug}`;
+const SETTINGS_MODULE_BINDINGS_SCOPE = (slug: string): string => `module-bindings:${slug}`;
 const SETTINGS_CONNECTOR_SCOPE = (cap: string, id: string): string =>
   `connector:${cap}:${id}`;
 const SECRETS_CONNECTOR_SCOPE = SETTINGS_CONNECTOR_SCOPE;
@@ -313,6 +314,20 @@ async function loadAgentBindings(
     .select({ value: settingsTable.value })
     .from(settingsTable)
     .where(eq(settingsTable.scope, SETTINGS_AGENT_BINDINGS_SCOPE(slug)))
+    .limit(1);
+  const v = rows[0]?.value;
+  if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, string>;
+  return {};
+}
+
+async function loadModuleBindings(
+  db: Db,
+  slug: string,
+): Promise<Record<string, string>> {
+  const rows = await db
+    .select({ value: settingsTable.value })
+    .from(settingsTable)
+    .where(eq(settingsTable.scope, SETTINGS_MODULE_BINDINGS_SCOPE(slug)))
     .limit(1);
   const v = rows[0]?.value;
   if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, string>;
@@ -1571,6 +1586,9 @@ export function registerAdminRoutes(app: FastifyInstance): void {
           .from(settingsTable)
           .where(eq(settingsTable.scope, scope))
           .limit(1);
+        // Connector bindings the operator picked for this module (capability ->
+        // instance id). Drives the instance-picker dropdown in the UI.
+        const connectorBindings = await loadModuleBindings(req.deps.db, mod.manifest.slug);
         return {
           slug: mod.manifest.slug,
           version: mod.manifest.version,
@@ -1590,6 +1608,10 @@ export function registerAdminRoutes(app: FastifyInstance): void {
           settingsSchema: zodToFieldSchema(
             mod.manifest.settingsSchema as Parameters<typeof zodToFieldSchema>[0],
           ),
+          /** Capabilities the module binds to connector instances. */
+          requiredConnectors: mod.manifest.requiredConnectors ?? [],
+          /** capability -> bound connector instance id. */
+          connectorBindings,
         };
       }),
     );
@@ -1637,6 +1659,56 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         });
       await req.audit('admin.module.settings.update', { slug });
       return { ok: true as const, settings: parsed.data };
+    },
+  );
+
+  // ---------- PUT /api/modules/:slug/bindings ----------
+  // Bind each connector capability the module requires to a specific instance,
+  // exactly like agents. Stored at `module-bindings:<slug>`; the module's
+  // context resolves through it via ctx.connector / ctx.connectorCredentials.
+  app.put(
+    '/api/modules/:slug/bindings',
+    { preHandler: [requireUser, requireRole('admin')] },
+    async (req, reply) => {
+      if (!require503(req.deps.inventory, reply, 'inventory')) return;
+      if (!req.deps.inventory.listModules || !req.deps.inventory.getModule) {
+        reply.code(503).send({ error: 'modules_not_wired' });
+        return;
+      }
+      const slug = (req.params as { slug: string }).slug;
+      let mod;
+      try {
+        mod = req.deps.inventory.getModule(slug);
+      } catch {
+        reply.code(404).send({ error: 'module_not_found' });
+        return;
+      }
+      const body = SetAgentBindingsRequest.safeParse(req.body);
+      if (!body.success) {
+        reply.code(400).send({ error: 'invalid_input', issues: body.error.issues });
+        return;
+      }
+      // Only allow bindings for capabilities the module actually declares.
+      const declared = new Set(mod.manifest.requiredConnectors ?? []);
+      for (const cap of Object.keys(body.data.bindings)) {
+        if (!declared.has(cap)) {
+          reply.code(400).send({ error: 'unknown_capability', capability: cap });
+          return;
+        }
+      }
+      await req.deps.db
+        .insert(settingsTable)
+        .values({
+          scope: SETTINGS_MODULE_BINDINGS_SCOPE(slug),
+          value: body.data.bindings,
+          updatedBy: req.user!.id,
+        })
+        .onConflictDoUpdate({
+          target: settingsTable.scope,
+          set: { value: body.data.bindings, updatedAt: new Date(), updatedBy: req.user!.id },
+        });
+      await req.audit('admin.module.bindings.update', { slug, bindings: body.data.bindings });
+      return { ok: true as const, bindings: body.data.bindings };
     },
   );
 
