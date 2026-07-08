@@ -1,5 +1,9 @@
 import type { z } from 'zod';
 import type { ComponentType } from 'react';
+import type {
+  ConnectorCapabilityMap,
+  ConnectorCredentials,
+} from '@frontrangesystems/business-os-connector-sdk';
 
 /**
  * Module — the third framework primitive, alongside agents and connectors.
@@ -57,6 +61,15 @@ export interface ModuleManifest<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
   /** Per-install settings — auto-rendered as a form by core, same as agents. */
   settingsSchema: TSettings;
   /**
+   * Connector capabilities this module needs. Declaring them makes the
+   * operator UI render an instance-picker (same one agents use) so the
+   * operator binds each capability to a specific connector instance, stored at
+   * `module-bindings:<slug>`. The module then resolves the bound instance via
+   * `ctx.connector(capability)` / `ctx.connectorCredentials(capability)`.
+   * Omit for modules that don't call connectors.
+   */
+  requiredConnectors?: ReadonlyArray<keyof ConnectorCapabilityMap>;
+  /**
    * Absolute path to a directory of .sql migrations the module owns.
    * Forward-only, same runner as everything else. Omit if the module has
    * no schema.
@@ -64,6 +77,47 @@ export interface ModuleManifest<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
   migrationsDir?: string;
   /** Default audience tag for the module's UI pages + routes. */
   defaultAudience?: AudienceTag;
+}
+
+/**
+ * A module's resolved connector binding — the operator-chosen instance for a
+ * capability, plus its decrypted credentials. Returned by
+ * `ctx.connectorCredentials(capability)`. This is the escape hatch for modules
+ * that need the raw credential because the capability interface can't express
+ * their use (e.g. a module doing Claude vision, which the text-only `llm`
+ * capability doesn't support). Most modules should use `ctx.connector()`.
+ */
+export interface ModuleConnectorBinding {
+  /** The bound connector-instance id. */
+  instanceId: string;
+  /** The bound instance's provider slug (e.g. 'anthropic'). */
+  providerSlug: string;
+  /** Decrypted credentials for the bound instance. */
+  credentials: ConnectorCredentials;
+}
+
+/**
+ * Connector access shared by the module's route + worker contexts. Available
+ * only for capabilities the module declared in `manifest.requiredConnectors`
+ * AND the operator has bound to an instance; throws otherwise.
+ */
+export interface ModuleConnectorAccess {
+  /**
+   * Resolve the operator-bound connector instance for `capability` as a
+   * capability object (e.g. an `EmailCapability`). Throws if the module didn't
+   * declare the capability or the operator hasn't bound an instance.
+   */
+  connector<C extends keyof ConnectorCapabilityMap>(
+    capability: C,
+  ): Promise<ConnectorCapabilityMap[C]>;
+  /**
+   * Resolve the bound instance's decrypted credentials + provider WITHOUT
+   * instantiating the capability. Escape hatch for raw-credential needs (see
+   * ModuleConnectorBinding). Throws under the same conditions as `connector`.
+   */
+  connectorCredentials<C extends keyof ConnectorCapabilityMap>(
+    capability: C,
+  ): Promise<ModuleConnectorBinding>;
 }
 
 /**
@@ -79,7 +133,7 @@ export interface ModuleManifest<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
  * Modules MUST NOT touch other modules' tables directly; cross-module data
  * crosses through the REST surface.
  */
-export interface ModuleServerContext<TSettings = unknown> {
+export interface ModuleServerContext<TSettings = unknown> extends ModuleConnectorAccess {
   /** Decrypted, parsed module settings (validated against the manifest schema). */
   settings: TSettings;
   /**
@@ -111,7 +165,7 @@ export interface ModuleServerContext<TSettings = unknown> {
  * Drizzle / Postgres types, so a handler builds its own db from
  * `process.env.DATABASE_URL` exactly like the module's routes do.
  */
-export interface ModuleWorkerContext<TSettings = unknown> {
+export interface ModuleWorkerContext<TSettings = unknown> extends ModuleConnectorAccess {
   /** Decrypted, parsed module settings (validated against the manifest schema). */
   settings: TSettings;
   /** Module-scoped logger pre-tagged with `module_slug` + the worker name. */

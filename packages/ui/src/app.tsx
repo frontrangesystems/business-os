@@ -9,6 +9,7 @@ import { AgentsList } from './pages/AgentsList';
 import { AgentDetail } from './pages/AgentDetail';
 import { RunDetail } from './pages/RunDetail';
 import { ConnectorsPage } from './pages/ConnectorsPage';
+import { ModulesAdmin } from './pages/ModulesAdmin';
 import { AuditPage } from './pages/AuditPage';
 import { ModulePagePlaceholder } from './pages/ModulePagePlaceholder';
 import { NotFound } from './pages/NotFound';
@@ -111,6 +112,16 @@ export function createOperatorApp(options: CreateOperatorAppOptions = {}): {
                       }
                     />
                     <Route path="settings" element={<Settings />} />
+                    {/* Module configuration (settings + connector bindings) —
+                        admin only, mirrors the server's requireRole('admin'). */}
+                    <Route
+                      path="modules-admin"
+                      element={
+                        <RequireAdmin>
+                          <ModulesAdmin />
+                        </RequireAdmin>
+                      }
+                    />
 
                     {/* Module routes — one Route per uiPage, plus a per-module
                         index fallback so /modules/<slug> with no pages still

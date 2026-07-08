@@ -198,8 +198,24 @@ export const Api = {
         uiPages: Array<{ path: string; navLabel?: string; audience?: WireAudience }>;
         settings: unknown;
         settingsSchema: unknown;
+        /** Connector capabilities the module binds to instances. */
+        requiredConnectors: string[];
+        /** capability -> bound connector instance id. */
+        connectorBindings: Record<string, string>;
       }>;
     }>('/api/modules'),
+
+  updateModuleSettings: (slug: string, value: unknown) =>
+    api<{ ok: true; settings: unknown }>(`/api/modules/${slug}/settings`, {
+      method: 'PUT',
+      body: { value },
+    }),
+
+  updateModuleBindings: (slug: string, bindings: Record<string, string>) =>
+    api<{ ok: true; bindings: Record<string, string> }>(`/api/modules/${slug}/bindings`, {
+      method: 'PUT',
+      body: { bindings },
+    }),
 
   // ----- User management (admin-only on the server) -----
   listUsers: () => api<{ users: ManagedUser[] }>('/api/users'),

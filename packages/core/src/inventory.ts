@@ -7,6 +7,32 @@
  */
 
 import type { z } from 'zod';
+import type {
+  ConnectorCapabilityMap,
+  ConnectorCredentials,
+} from '@frontrangesystems/business-os-connector-sdk';
+
+/**
+ * Minimal shape of the runtime's connector resolver that core needs to give
+ * modules connector access. The runtime's createConnectorResolver() satisfies
+ * this structurally. `moduleSlug` reads `module-bindings:<slug>` the same way
+ * `agentSlug` reads `agent-bindings:<slug>`.
+ */
+export interface ConnectorResolverLike {
+  resolve<C extends keyof ConnectorCapabilityMap>(
+    capability: C,
+    opts?: { providerSlug?: string; agentSlug?: string; moduleSlug?: string },
+  ): Promise<ConnectorCapabilityMap[C]>;
+  resolveBinding<C extends keyof ConnectorCapabilityMap>(
+    capability: C,
+    opts?: { providerSlug?: string; agentSlug?: string; moduleSlug?: string },
+  ): Promise<{
+    instanceId: string;
+    providerSlug: string;
+    capability: string;
+    credentials: ConnectorCredentials;
+  }>;
+}
 
 export interface AgentManifestLike<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
   slug: string;
@@ -94,6 +120,8 @@ export interface ModuleManifestLike<TSettings extends z.ZodTypeAny = z.ZodTypeAn
   displayName: string;
   description: string;
   settingsSchema: TSettings;
+  /** Connector capabilities the module binds to instances (module-bindings:<slug>). */
+  requiredConnectors?: ReadonlyArray<string>;
   migrationsDir?: string;
   defaultAudience?: unknown;
 }
@@ -176,4 +204,12 @@ export interface ManualTriggerer {
    * jobs backend running workers.
    */
   subscribeJob?(name: string, handler: (payload: unknown) => Promise<void>): Promise<void>;
+  /**
+   * The connector resolver, so modules can resolve their bound connector
+   * instances (`ctx.connector` / `ctx.connectorCredentials`). The client's
+   * trigger factory already constructs a resolver for the scheduler; it just
+   * returns it here too. Optional — when absent, module connector access
+   * throws with a clear "no resolver wired" message.
+   */
+  connectors?: ConnectorResolverLike;
 }

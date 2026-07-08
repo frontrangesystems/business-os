@@ -3,7 +3,47 @@ import type { FastifyInstance } from 'fastify';
 import type { Logger } from 'pino';
 import { settings as settingsTable, type Db } from '@frontrangesystems/business-os-db';
 import type { AppDeps } from './app.js';
-import type { AgentInventory, ManualTriggerer, ModulePackageLike } from './inventory.js';
+import type {
+  AgentInventory,
+  ConnectorResolverLike,
+  ManualTriggerer,
+  ModulePackageLike,
+} from './inventory.js';
+
+/**
+ * Build the `connector` / `connectorCredentials` accessors for a module's
+ * context. Both resolve through the shared resolver with `{ moduleSlug }`, so a
+ * module only ever reaches the connector instance the operator bound to it
+ * (`module-bindings:<slug>`). Throws a clear error if no resolver is wired.
+ */
+function buildModuleConnectorAccess(
+  connectors: ConnectorResolverLike | undefined,
+  slug: string,
+): {
+  connector: (capability: string) => Promise<unknown>;
+  connectorCredentials: (
+    capability: string,
+  ) => Promise<{ instanceId: string; providerSlug: string; credentials: unknown }>;
+} {
+  const require = (method: string): ConnectorResolverLike => {
+    if (!connectors) {
+      throw new Error(
+        `module ${slug}: ctx.${method} called but no connector resolver is wired (trigger.connectors missing)`,
+      );
+    }
+    return connectors;
+  };
+  return {
+    connector: (capability) =>
+      require('connector').resolve(capability as never, { moduleSlug: slug }),
+    connectorCredentials: async (capability) => {
+      const b = await require('connectorCredentials').resolveBinding(capability as never, {
+        moduleSlug: slug,
+      });
+      return { instanceId: b.instanceId, providerSlug: b.providerSlug, credentials: b.credentials };
+    },
+  };
+}
 
 /**
  * Server-side wiring for modules.
@@ -65,6 +105,7 @@ export async function registerModuleRoutes(
             settings,
             logger: childLogger,
             enqueue,
+            ...buildModuleConnectorAccess(deps.trigger?.connectors, slug),
           }),
         );
       },
@@ -134,14 +175,28 @@ export async function registerModuleBackgroundWorkers(opts: {
       // inventory.ts) purely for assignability; here we invoke it with the real
       // worker ctx + payload, so cast to the actual call shape.
       const invoke = handler as unknown as (
-        ctx: { settings: unknown; logger: typeof workerLogger },
+        ctx: {
+          settings: unknown;
+          logger: typeof workerLogger;
+          connector: (capability: string) => Promise<unknown>;
+          connectorCredentials: (
+            capability: string,
+          ) => Promise<{ instanceId: string; providerSlug: string; credentials: unknown }>;
+        },
         payload: unknown,
       ) => Promise<void>;
       await subscribeJob(jobName, async (payload) => {
         // Resolve settings fresh per job so operator settings changes take
         // effect without a worker restart.
         const settings = await loadModuleSettings(opts.db, mod);
-        await invoke({ settings, logger: workerLogger }, payload);
+        await invoke(
+          {
+            settings,
+            logger: workerLogger,
+            ...buildModuleConnectorAccess(opts.trigger?.connectors, slug),
+          },
+          payload,
+        );
       });
       opts.logger.info({ module: slug, worker: workerName, jobName }, 'module background worker registered');
     }
