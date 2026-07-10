@@ -77,7 +77,26 @@ export async function registerModuleRoutes(
   for (const mod of modules) {
     if (!mod.registerRoutes) continue;
 
-    const settings = await loadModuleSettings(deps.db, mod);
+    // Settings are re-read on every request (same rule as background workers,
+    // which resolve fresh per job) so operator changes in the settings UI take
+    // effect immediately — on every machine — without a restart. `current`
+    // starts as the boot-time load so anything the module reads during
+    // registration sees valid settings; the onRequest hook in the scope below
+    // refreshes it before each handler runs. ctx.settings is a Proxy over
+    // `current` so the module's closed-over reference stays live, including
+    // spread/JSON.stringify access.
+    let current = await loadModuleSettings(deps.db, mod);
+    const liveSettings = new Proxy({} as Record<string | symbol, unknown>, {
+      get: (_t, key) => Reflect.get(current as object, key),
+      has: (_t, key) => Reflect.has(current as object, key),
+      ownKeys: () => Reflect.ownKeys(current as object),
+      getOwnPropertyDescriptor: (_t, key) =>
+        Object.getOwnPropertyDescriptor(current as object, key) ?? {
+          configurable: true,
+          enumerable: true,
+          value: undefined,
+        },
+    });
     const childLogger = app.log.child({ module_slug: mod.manifest.slug });
 
     // ctx.enqueue routes to the module's own background workers under the job
@@ -98,11 +117,17 @@ export async function registerModuleRoutes(
 
     await app.register(
       async (scope) => {
+        // Refresh the settings snapshot before every request in this module's
+        // scope. Single-row PK lookup — same cost profile as the session check
+        // every authenticated request already does.
+        scope.addHook('onRequest', async () => {
+          current = await loadModuleSettings(deps.db, mod);
+        });
         // Cast through unknown — the module-sdk types `app` as unknown to stay
         // runtime-neutral. Inside this closure it's a normal FastifyInstance.
         await Promise.resolve(
           (mod.registerRoutes as (a: unknown, c: unknown) => void | Promise<void>)(scope, {
-            settings,
+            settings: liveSettings,
             logger: childLogger,
             enqueue,
             ...buildModuleConnectorAccess(deps.trigger?.connectors, slug),
