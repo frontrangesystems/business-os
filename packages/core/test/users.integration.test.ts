@@ -144,20 +144,22 @@ d('user-management routes (real Postgres)', () => {
     expect(audit.length).toBe(1);
   });
 
-  it('rejects a short password and a duplicate email', async () => {
-    const short = await app.inject({
+  it('rejects an invalid email and a duplicate email', async () => {
+    // Create no longer takes a password (invite-email flow since PR #113) —
+    // the invalid-input case is a malformed email, not a short password.
+    const bad = await app.inject({
       method: 'POST',
       url: '/api/users',
       headers: { cookie: adminCookie },
-      payload: { email: 'short@example.com', password: 'too-short' },
+      payload: { email: 'not-an-email' },
     });
-    expect(short.statusCode).toBe(400);
+    expect(bad.statusCode).toBe(400);
 
     const dup = await app.inject({
       method: 'POST',
       url: '/api/users',
       headers: { cookie: adminCookie },
-      payload: { email: 'admin@example.com', password: 'a-very-long-password' },
+      payload: { email: 'admin@example.com' },
     });
     expect(dup.statusCode).toBe(409);
     expect(dup.json()).toEqual({ error: 'email_taken' });
