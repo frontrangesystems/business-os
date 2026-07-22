@@ -25,10 +25,24 @@ import { prospectorBidFeedback, bidWatcherSeen } from './schema.js';
 const here = dirname(fileURLToPath(import.meta.url));
 
 const SettingsSchema = z.object({
-  /** Cap on how many bids the dashboard "new bids" section pulls per render. */
-  newSectionSize: z.number().int().min(1).max(100).default(20),
-  /** Minimum score to consider showing in the dashboard's main section. */
-  minDashboardScore: z.number().int().min(0).max(100).default(60),
+  newSectionSize: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(20)
+    .describe(
+      'How many bid cards the Home dashboard shows in "New bids worth a look" (the highest-scoring, not-yet-reviewed bids). Default 20.',
+    ),
+  minDashboardScore: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .default(60)
+    .describe(
+      'Recommended-bid cutoff (0–100). A bid must score at or above this to count as "recommended" — it drives the Home dashboard and the All Bids "Recommended only" default. Lower it to surface more bids for review; raise it to see only the strongest fits.',
+    ),
 });
 type Settings = z.infer<typeof SettingsSchema>;
 
@@ -66,6 +80,7 @@ export default defineModule({
      *   ?filter=not-a-fit                only bids the caller rated -1
      *   ?filter=not-reviewed             only bids the caller hasn't rated yet
      *   ?filter=all (default)            no rating filter
+     *   ?recommended=1                   only bids scoring ≥ minDashboardScore
      *   ?limit=<n>                       cap rows (default newSectionSize, max 100)
      */
     app.get(
@@ -73,10 +88,12 @@ export default defineModule({
       { preHandler: requireUser },
       async (req: FastifyRequest) => {
         const userId = req.user!.id;
-        const q = req.query as { limit?: string; status?: string; filter?: string };
+        const q = req.query as { limit?: string; status?: string; filter?: string; recommended?: string };
         const limit = Number(q.limit ?? ctx.settings.newSectionSize);
         const status = q.status ?? null;
         const filter = q.filter ?? 'all';
+        const recommendedOnly = q.recommended === '1' || q.recommended === 'true';
+        const minScore = ctx.settings.minDashboardScore;
 
         const ratingClause =
           filter === 'worth-bidding'
@@ -116,11 +133,13 @@ export default defineModule({
           .where(and(
             status ? eq(bidWatcherSeen.status, status) : sql`TRUE`,
             ratingClause,
+            recommendedOnly ? gte(bidWatcherSeen.score, minScore) : sql`TRUE`,
           ))
           .orderBy(desc(bidWatcherSeen.score), desc(bidWatcherSeen.firstSeenAt))
           .limit(Math.min(limit, 100));
 
         return {
+          minScore,
           bids: rows.map((r) => ({
             ...r,
             estimatedValue: r.estimatedValue !== null ? Number(r.estimatedValue) : null,
