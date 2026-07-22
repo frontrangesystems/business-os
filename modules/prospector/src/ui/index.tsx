@@ -253,16 +253,23 @@ export function ProspectorBidsPage(): JSX.Element {
   const [bids, setBids] = useState<BidRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<BidFilter>('all');
+  // Default to the recommended set so the operator lands on bids worth rating,
+  // one toggle away from the full list.
+  const [recommendedOnly, setRecommendedOnly] = useState(true);
+  const [minScore, setMinScore] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setBids(null);
     void (async () => {
       try {
-        const r = await fetchJson<{ bids: BidRow[] }>(
-          `/api/modules/prospector/bids?limit=100&filter=${filter}`,
+        const r = await fetchJson<{ bids: BidRow[]; minScore: number }>(
+          `/api/modules/prospector/bids?limit=100&filter=${filter}${recommendedOnly ? '&recommended=1' : ''}`,
         );
-        if (!cancelled) setBids(r.bids);
+        if (!cancelled) {
+          setBids(r.bids);
+          setMinScore(r.minScore);
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'load failed');
       }
@@ -270,18 +277,32 @@ export function ProspectorBidsPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [filter]);
+  }, [filter, recommendedOnly]);
+
+  const updateRating = (source: string, externalId: string, rating: 1 | -1): void => {
+    setBids((prev) =>
+      prev
+        ? prev.map((b) =>
+            b.source === source && b.externalId === externalId ? { ...b, myRating: rating } : b,
+          )
+        : prev,
+    );
+  };
 
   return (
     <div className="p-8">
       <header className="mb-6">
         <h1 className="text-lg font-semibold">All bids</h1>
         <p className="text-sm text-ink-500">
-          Everything the bid-watcher has surfaced, ranked by score.
+          Ranked by score. Showing{' '}
+          {recommendedOnly
+            ? `recommended bids${minScore !== null ? ` (score ≥ ${minScore})` : ''}`
+            : 'every bid the watcher has surfaced'}
+          . Thumb each one 👍/👎 — your calls tune future scoring.
         </p>
       </header>
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {FILTER_OPTIONS.map((opt) => (
           <button
             key={opt.id}
@@ -296,6 +317,19 @@ export function ProspectorBidsPage(): JSX.Element {
             {opt.label}
           </button>
         ))}
+        <span className="mx-1 h-5 w-px bg-ink-200 dark:bg-ink-700" aria-hidden />
+        <button
+          type="button"
+          onClick={() => setRecommendedOnly((v) => !v)}
+          aria-pressed={recommendedOnly}
+          className={`rounded-full border px-3 py-1 text-sm transition ${
+            recommendedOnly
+              ? 'border-accent bg-accent/10 text-accent'
+              : 'border-ink-200 text-ink-700 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800'
+          }`}
+        >
+          {recommendedOnly ? '★ Recommended only' : 'Showing all — recommended only?'}
+        </button>
       </div>
 
       {error && (
@@ -327,6 +361,7 @@ export function ProspectorBidsPage(): JSX.Element {
                 <th className="px-3 py-2">Value</th>
                 <th className="px-3 py-2">Due</th>
                 <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Rate</th>
               </tr>
             </thead>
             <tbody>
@@ -353,6 +388,14 @@ export function ProspectorBidsPage(): JSX.Element {
                   </td>
                   <td className="px-3 py-2">
                     <span className="rounded bg-ink-100 px-2 py-0.5 text-xs dark:bg-ink-800">{b.status}</span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Thumbs
+                      source={b.source}
+                      externalId={b.externalId}
+                      current={b.myRating}
+                      onChange={(rating) => updateRating(b.source, b.externalId, rating)}
+                    />
                   </td>
                 </tr>
               ))}
