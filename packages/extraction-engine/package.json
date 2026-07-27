@@ -1,0 +1,38 @@
+{
+  "name": "@frontrangesystems/business-os-extraction-engine",
+  "version": "0.0.1",
+  "description": "Reusable PDF → takeoff/pay-item extraction engine. Renders pages, OCRs image-only sheets with a vision LLM, extracts structured pay-items. No DB, no object storage, no framework coupling — a pure library.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.40.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "vitest": "^2.1.0"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/frontrangesystems/business-os.git",
+    "directory": "packages/extraction-engine"
+  }
+}
