@@ -561,6 +561,58 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.42)
 
+  modules/document-parser:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.899.0
+        version: 3.899.0
+      '@aws-sdk/lib-storage':
+        specifier: ^3.899.0
+        version: 3.899.0(@aws-sdk/client-s3@3.899.0)
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.899.0
+        version: 3.899.0
+      '@frontrangesystems/business-os-core':
+        specifier: workspace:^
+        version: link:../../packages/core
+      '@frontrangesystems/business-os-extraction-engine':
+        specifier: workspace:^
+        version: link:../../packages/extraction-engine
+      '@frontrangesystems/business-os-module-sdk':
+        specifier: workspace:^
+        version: link:../../packages/module-sdk
+      drizzle-orm:
+        specifier: ^0.33.0
+        version: 0.33.0(@opentelemetry/api@1.9.1)(@types/pg@8.6.1)(@types/react@18.3.31)(pg@8.21.0)(postgres@3.4.9)(react@18.3.1)
+      postgres:
+        specifier: ^3.4.4
+        version: 3.4.9
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@frontrangesystems/business-os-db':
+        specifier: workspace:^
+        version: link:../../packages/db
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.42
+      '@types/react':
+        specifier: ^18.3.3
+        version: 18.3.31
+      fastify:
+        specifier: ^4.28.0
+        version: 4.29.1
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@20.19.42)
+
   modules/example:
     dependencies:
       '@frontrangesystems/business-os-db':
@@ -6697,7 +6749,7 @@ snapshots:
 
   '@types/connect@3.4.36':
     dependencies:
-      '@types/node': 20.19.42
+      '@types/node': 22.20.1
 
   '@types/estree@1.0.9': {}
 
@@ -6707,7 +6759,7 @@ snapshots:
 
   '@types/mysql@2.15.26':
     dependencies:
-      '@types/node': 20.19.42
+      '@types/node': 22.20.1
 
   '@types/node-fetch@2.6.13':
     dependencies:
@@ -6732,7 +6784,7 @@ snapshots:
 
   '@types/pg@8.6.1':
     dependencies:
-      '@types/node': 20.19.42
+      '@types/node': 22.20.1
       pg-protocol: 1.14.0
       pg-types: 2.2.0
 
@@ -6751,7 +6803,7 @@ snapshots:
 
   '@types/tedious@4.0.14':
     dependencies:
-      '@types/node': 20.19.42
+      '@types/node': 22.20.1
 
   '@vitejs/plugin-react@4.7.0(vite@5.4.21(@types/node@20.19.42))':
     dependencies:
