@@ -135,6 +135,22 @@ export interface ModulePackageLike {
   registerRoutes?(app: unknown, ctx: unknown): void | Promise<void>;
   uiPages?: Array<{ path: string; navLabel?: string; audience?: unknown }>;
   /**
+   * Contribute one card to the operator Dashboard. Mirrors module-sdk's
+   * ModulePackage.dashboardContribution. Method shorthand + `never` ctx keeps
+   * concrete modules (whose ctx is the specific `DashboardContext<TSettings>`)
+   * structurally assignable under strictFunctionTypes — core invokes the real
+   * hook off the concrete package in modules.ts, so the loose param type here is
+   * purely for structural compatibility.
+   */
+  dashboardContribution?(ctx: never): Promise<{
+    title: string;
+    summary?: string;
+    items: Array<{ title: string; subtitle?: string; href?: string; badge?: string }>;
+    emptyText?: string;
+    ctaLabel?: string;
+    ctaHref?: string;
+  } | null>;
+  /**
    * Background workers the module owns, keyed by worker name. Mirrors
    * module-sdk's ModulePackage.backgroundWorkers. Each runs in the worker
    * process and is triggered by the module via ctx.enqueue — NOT an agent, so

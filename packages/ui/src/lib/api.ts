@@ -130,6 +130,17 @@ export interface AgentRun {
   triggeredBy?: string | null;
 }
 
+/** A module-contributed dashboard card (see module-sdk DashboardContribution). */
+export interface DashboardCard {
+  moduleSlug: string;
+  title: string;
+  summary?: string;
+  items: Array<{ title: string; subtitle?: string; href?: string; badge?: string }>;
+  emptyText?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+}
+
 export interface AuditEntry {
   id: string;
   at: string;
@@ -235,7 +246,11 @@ export const Api = {
       body,
     }),
 
-  getDashboard: () =>
+  /** Dashboard cards contributed by modules (the default landing page). */
+  getDashboard: () => api<{ cards: DashboardCard[] }>('/api/dashboard'),
+
+  /** Install status (agents, recent runs, capability coverage) — admin only. */
+  getStatus: () =>
     api<{
       agentCount: number;
       recentRuns: Array<AgentRun & { agentSlug: string }>;
@@ -245,7 +260,7 @@ export const Api = {
         configured: number;
         activeProvider: string | null;
       }>;
-    }>('/api/dashboard'),
+    }>('/api/status'),
 
   listAgents: () => api<{ agents: AgentSummary[] }>('/api/agents'),
   /** Agents the install knows about but the operator hasn't enabled yet. */
