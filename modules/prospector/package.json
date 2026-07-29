@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-module-prospector",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "Prospector — surfaces scored bid opportunities + accepts thumbs feedback. Reads bids written by the bid-watcher agent; owns its own feedback table.",
   "type": "module",
   "main": "./dist/server/index.js",

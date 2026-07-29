@@ -156,6 +156,7 @@ export function Shell(): JSX.Element {
             ),
           )}
           <SidebarLabel>Operator</SidebarLabel>
+          {isAdmin && <NavItem to="/status">Status</NavItem>}
           <NavItem to="/audit">Audit log</NavItem>
           {isAdmin && <NavItem to="/modules-admin">Modules</NavItem>}
           {isAdmin && <NavItem to="/users">Users</NavItem>}

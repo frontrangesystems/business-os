@@ -5,6 +5,7 @@ import { Login } from './pages/Login';
 import { PasswordResetRequest, PasswordResetComplete } from './pages/PasswordReset';
 import { Shell } from './components/Shell';
 import { Dashboard } from './pages/Dashboard';
+import { Status } from './pages/Status';
 import { AgentsList } from './pages/AgentsList';
 import { AgentDetail } from './pages/AgentDetail';
 import { RunDetail } from './pages/RunDetail';
@@ -85,6 +86,16 @@ export function createOperatorApp(options: CreateOperatorAppOptions = {}): {
                   >
                     <Route index element={<Navigate to="/dashboard" replace />} />
                     <Route path="dashboard" element={<Dashboard />} />
+                    {/* Status is the former dashboard (ops/status) — admin only,
+                        mirrors the server's requireRole('admin') on /api/status. */}
+                    <Route
+                      path="status"
+                      element={
+                        <RequireAdmin>
+                          <Status />
+                        </RequireAdmin>
+                      }
+                    />
                     <Route path="agents" element={<AgentsList />} />
                     <Route path="agents/:slug" element={<AgentDetail />} />
                     <Route path="runs/:id" element={<RunDetail />} />

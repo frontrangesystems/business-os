@@ -262,6 +262,56 @@ export interface DigestContext<TSettings = unknown> {
   settings: TSettings;
 }
 
+/**
+ * One card a module contributes to the operator's Dashboard (the default
+ * landing page). Core calls each module's `dashboardContribution` for the
+ * requesting user, drops null contributions, and renders the surviving cards
+ * uniformly — so the dashboard looks consistent regardless of which modules an
+ * install runs.
+ *
+ * Deliberately declarative (no React): the module returns data, core owns the
+ * rendering. This mirrors `DigestContribution` — a module that contributes to
+ * the daily digest can contribute a dashboard card with near-identical code.
+ *
+ * Return `null` (or `items: []` with no `emptyText`) to omit the card for this
+ * user this load.
+ */
+export interface DashboardContribution {
+  /** Card heading, e.g. "New bids worth a look". */
+  title: string;
+  /** Optional one-line lead under the title. */
+  summary?: string;
+  /** Preview rows. Keep it short — the card is a teaser, not the full list. */
+  items: DashboardCardItem[];
+  /**
+   * Shown in place of the item list when `items` is empty. Omit to drop the
+   * card entirely when there's nothing to show.
+   */
+  emptyText?: string;
+  /** Label for the card's call-to-action button, e.g. "View all bids". */
+  ctaLabel?: string;
+  /** Where the CTA links, e.g. "/modules/prospector". */
+  ctaHref?: string;
+}
+
+export interface DashboardCardItem {
+  title: string;
+  subtitle?: string;
+  /** Deep link for this row (module page or external URL). Omit for static rows. */
+  href?: string;
+  /** Short status pill, e.g. "Score 82%" or "Due Fri". */
+  badge?: string;
+}
+
+export interface DashboardContext<TSettings = unknown> {
+  /** The signed-in user viewing the dashboard. Lets cards be per-user. */
+  user: { id: string; email: string };
+  /** Module-scoped logger pre-tagged with module_slug + user_id. */
+  logger: ModuleLogger;
+  /** Decrypted, parsed module settings. */
+  settings: TSettings;
+}
+
 export interface ModulePackage<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
   manifest: ModuleManifest<TSettings>;
   /**
@@ -279,6 +329,12 @@ export interface ModulePackage<TSettings extends z.ZodTypeAny = z.ZodTypeAny> {
    * digest run. Optional — modules without digest content can omit.
    */
   digestContribution?: (ctx: DigestContext<z.infer<TSettings>>) => Promise<DigestContribution | null>;
+  /**
+   * Contribute one card to the operator Dashboard. Called per requesting user
+   * on each dashboard load. Optional — modules without a dashboard surface omit
+   * it. Return `null` to show nothing this load. See DashboardContribution.
+   */
+  dashboardContribution?: (ctx: DashboardContext<z.infer<TSettings>>) => Promise<DashboardContribution | null>;
   /**
    * Background workers this module owns, keyed by worker name. Each runs in
    * the WORKER process and is triggered by the module itself via

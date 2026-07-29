@@ -143,6 +143,73 @@ export async function registerModuleRoutes(
   }
 }
 
+/**
+ * One rendered dashboard card, as returned to the UI by GET /api/dashboard.
+ * Shape mirrors module-sdk's DashboardContribution plus the owning module's
+ * slug (so the UI can key/label cards).
+ */
+export interface DashboardCard {
+  moduleSlug: string;
+  title: string;
+  summary?: string;
+  items: Array<{ title: string; subtitle?: string; href?: string; badge?: string }>;
+  emptyText?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+}
+
+/**
+ * Aggregate every registered module's dashboard contribution for `user`.
+ *
+ * For each module that declares `dashboardContribution`: load its persisted
+ * settings (defaults applied), build a module-scoped logger tagged with
+ * module_slug + user_id, and invoke the hook. A hook that throws is logged and
+ * skipped so one broken module never blanks the whole dashboard. Cards preserve
+ * module registration order; a hook returning `null` drops its card.
+ */
+/**
+ * Minimal logger shape collectDashboardCards needs — satisfied by both a pino
+ * `Logger` and Fastify's `req.log`/`app.log` (`FastifyBaseLogger`), so callers
+ * can pass whichever they have without a cast.
+ */
+interface DashboardLogger {
+  child(bindings: Record<string, unknown>): DashboardLogger;
+  warn(obj: object, msg?: string): void;
+}
+
+export async function collectDashboardCards(opts: {
+  db: Db;
+  inventory: AgentInventory;
+  logger: DashboardLogger;
+  user: { id: string; email: string };
+}): Promise<DashboardCard[]> {
+  const { db, inventory, logger, user } = opts;
+  if (!inventory.listModules) return [];
+  const cards: DashboardCard[] = [];
+  for (const mod of inventory.listModules()) {
+    if (!mod.dashboardContribution) continue;
+    const slug = mod.manifest.slug;
+    try {
+      const settings = await loadModuleSettings(db, mod);
+      const childLogger = logger.child({ module_slug: slug, user_id: user.id });
+      // module-sdk types the hook's ctx as the concrete DashboardContext; the
+      // structural ModulePackageLike types it as `never`. Cast to the real call
+      // shape to invoke it here.
+      const invoke = mod.dashboardContribution as unknown as (ctx: {
+        user: { id: string; email: string };
+        logger: typeof childLogger;
+        settings: unknown;
+      }) => Promise<DashboardCard | null>;
+      const contribution = await invoke({ user, logger: childLogger, settings });
+      if (!contribution) continue;
+      cards.push({ ...contribution, moduleSlug: slug });
+    } catch (err) {
+      logger.warn({ err, module_slug: slug }, 'dashboardContribution failed; skipping card');
+    }
+  }
+  return cards;
+}
+
 async function loadModuleSettings(
   db: Db,
   mod: ModulePackageLike,

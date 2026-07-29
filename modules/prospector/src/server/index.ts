@@ -10,6 +10,8 @@ import {
   type ModuleServerContext,
   type DigestContext,
   type DigestContribution,
+  type DashboardContext,
+  type DashboardContribution,
 } from '@frontrangesystems/business-os-module-sdk';
 import { requireUser } from '@frontrangesystems/business-os-core';
 import { prospectorBidFeedback, bidWatcherSeen } from './schema.js';
@@ -42,6 +44,15 @@ const SettingsSchema = z.object({
     .default(60)
     .describe(
       'Recommended-bid cutoff (0–100). A bid must score at or above this to count as "recommended" — it drives the Home dashboard and the All Bids "Recommended only" default. Lower it to surface more bids for review; raise it to see only the strongest fits.',
+    ),
+  dashboardCardSize: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .default(10)
+    .describe(
+      'How many recommended bids to preview on the Home dashboard card. Default 10. Tap through to Prospector for the full list.',
     ),
 });
 type Settings = z.infer<typeof SettingsSchema>;
@@ -385,6 +396,74 @@ export default defineModule({
       sectionTitle: 'New bids worth a look',
       summary: `${items.length} new ${items.length === 1 ? 'bid' : 'bids'} since your last digest.`,
       items,
+    };
+  },
+  dashboardContribution: async (
+    ctx: DashboardContext<Settings>,
+  ): Promise<DashboardContribution | null> => {
+    const db = buildDb();
+    // Same defensive parse as digest: the settings row is often `{}` before the
+    // operator touches anything, so apply schema defaults.
+    const settings = SettingsSchema.parse(ctx.settings ?? {});
+    const min = settings.minDashboardScore;
+    const size = settings.dashboardCardSize;
+    const userId = ctx.user.id;
+
+    // Recommended bids this user hasn't reviewed yet: status 'new',
+    // score ≥ cutoff, no rating from this user. Highest score first.
+    const rows = await db
+      .select({
+        source: bidWatcherSeen.source,
+        externalId: bidWatcherSeen.externalId,
+        title: bidWatcherSeen.title,
+        url: bidWatcherSeen.url,
+        location: bidWatcherSeen.location,
+        estimatedValue: bidWatcherSeen.estimatedValue,
+        bidsDueAt: bidWatcherSeen.bidsDueAt,
+        score: bidWatcherSeen.score,
+      })
+      .from(bidWatcherSeen)
+      .leftJoin(
+        prospectorBidFeedback,
+        and(
+          eq(prospectorBidFeedback.source, bidWatcherSeen.source),
+          eq(prospectorBidFeedback.externalId, bidWatcherSeen.externalId),
+          eq(prospectorBidFeedback.userId, userId),
+        ),
+      )
+      .where(and(
+        eq(bidWatcherSeen.status, 'new'),
+        gte(bidWatcherSeen.score, min),
+        isNull(prospectorBidFeedback.rating),
+      ))
+      .orderBy(desc(bidWatcherSeen.score), desc(bidWatcherSeen.firstSeenAt))
+      .limit(size);
+
+    const items = rows.map((r) => {
+      const dueAt = r.bidsDueAt ? new Date(r.bidsDueAt as unknown as string) : null;
+      const subtitle = [
+        r.location,
+        r.estimatedValue !== null ? `$${Number(r.estimatedValue).toLocaleString()}` : null,
+        dueAt ? `Due ${dueAt.toLocaleDateString()}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      return {
+        title: r.title ?? 'Untitled',
+        subtitle: subtitle || undefined,
+        // Prefer the source posting; fall back to the module page.
+        href: r.url ?? '/modules/prospector',
+        badge: r.score !== null ? `Score ${r.score}%` : undefined,
+      };
+    });
+
+    return {
+      title: 'Bids worth a look',
+      summary: `Top ${items.length === 1 ? 'recommendation' : `${items.length} recommendations`} the Prospector picked for you.`,
+      items,
+      emptyText: 'No new recommended bids right now — check back after the next scan.',
+      ctaLabel: 'View all bids',
+      ctaHref: '/modules/prospector',
     };
   },
 });

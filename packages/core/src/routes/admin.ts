@@ -17,6 +17,7 @@ import {
   type FriendlySchedule,
 } from '@frontrangesystems/business-os-agent-sdk';
 import { requireUser, requireRole } from './_require-user.js';
+import { collectDashboardCards } from '../modules.js';
 import { zodToFieldSchema } from '../zod-form.js';
 import { AGENT_REFRESH_CHANNEL } from '../agent-refresh.js';
 import type { ExternalOAuthBrokerLike } from '../inventory.js';
@@ -1713,8 +1714,25 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   );
 
   // ---------- GET /api/dashboard ----------
-  // One round-trip overview used by the operator UI's landing page.
+  // The operator landing page: business-facing cards contributed by modules
+  // (see modules' dashboardContribution). Aggregated per requesting user so
+  // cards can be personalized. One module throwing never blanks the page.
   app.get('/api/dashboard', { preHandler: requireUser }, async (req, reply) => {
+    if (!require503(req.deps.inventory, reply, 'inventory')) return;
+    const cards = await collectDashboardCards({
+      db: req.deps.db,
+      inventory: req.deps.inventory,
+      logger: req.log,
+      user: { id: req.user!.id, email: req.user!.email },
+    });
+    return { cards };
+  });
+
+  // ---------- GET /api/status ----------
+  // Install status overview — agent count, recent runs, capability coverage.
+  // This is ops/admin information (the former dashboard payload), so it's
+  // admin-gated and surfaced on the Status screen.
+  app.get('/api/status', { preHandler: [requireUser, requireRole('admin')] }, async (req, reply) => {
     if (!require503(req.deps.inventory, reply, 'inventory')) return;
 
     const agents = req.deps.inventory.listAgents();
