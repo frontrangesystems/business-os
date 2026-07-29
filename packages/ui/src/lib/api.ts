@@ -246,6 +246,9 @@ export const Api = {
       body,
     }),
 
+  /** Running framework version, for the UI footer. */
+  getMeta: () => api<{ version: string }>('/api/meta'),
+
   /** Dashboard cards contributed by modules (the default landing page). */
   getDashboard: () => api<{ cards: DashboardCard[] }>('/api/dashboard'),
 

@@ -198,4 +198,17 @@ d('dashboard aggregation + status split (real Postgres)', () => {
     expect(body).toHaveProperty('recentRuns');
     expect(body).toHaveProperty('capabilities');
   });
+
+  it('GET /api/meta returns the running version (any authenticated user)', async () => {
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/meta',
+      headers: { cookie: userCookie },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as { version: string };
+    // Read from core's own package.json via version.ts — must be a non-empty semver-ish string.
+    expect(typeof body.version).toBe('string');
+    expect(body.version.length).toBeGreaterThan(0);
+  });
 });
