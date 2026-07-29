@@ -18,6 +18,7 @@ import {
 } from '@frontrangesystems/business-os-agent-sdk';
 import { requireUser, requireRole } from './_require-user.js';
 import { collectDashboardCards } from '../modules.js';
+import { APP_VERSION } from '../version.js';
 import { zodToFieldSchema } from '../zod-form.js';
 import { AGENT_REFRESH_CHANNEL } from '../agent-refresh.js';
 import type { ExternalOAuthBrokerLike } from '../inventory.js';
@@ -1712,6 +1713,13 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       return { ok: true as const, bindings: body.data.bindings };
     },
   );
+
+  // ---------- GET /api/meta ----------
+  // Running framework version, surfaced in the operator UI footer. Available to
+  // any authenticated user (not admin-gated) so everyone can see what's live.
+  app.get('/api/meta', { preHandler: requireUser }, async () => {
+    return { version: APP_VERSION };
+  });
 
   // ---------- GET /api/dashboard ----------
   // The operator landing page: business-facing cards contributed by modules

@@ -43,6 +43,7 @@ export function Shell(): JSX.Element {
   const user = state.kind === 'authenticated' ? state.user : null;
   const [modules, setModules] = useState<ModuleNav[]>([]);
   const [navOpen, setNavOpen] = useState<boolean>(readNavOpen);
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -69,6 +70,16 @@ export function Shell(): JSX.Element {
       .catch(() => {
         // /api/modules may not exist on older cores or when no modules are wired.
         setModules([]);
+      });
+  }, [state.kind]);
+
+  useEffect(() => {
+    if (state.kind !== 'authenticated') return;
+    Api.getMeta()
+      .then((r) => setVersion(r.version))
+      .catch(() => {
+        // /api/meta may not exist on older cores — just omit the version.
+        setVersion(null);
       });
   }, [state.kind]);
 
@@ -164,15 +175,22 @@ export function Shell(): JSX.Element {
         </nav>
         <div className="border-t border-ink-200 px-5 py-4 text-xs text-ink-500 dark:border-ink-800 dark:text-ink-400">
           <div className="truncate font-mono">{user?.email ?? '—'}</div>
-          <button
-            className="mt-2 text-accent transition-colors hover:text-accent-hover hover:underline"
-            onClick={async () => {
-              await logout();
-              navigate('/login');
-            }}
-          >
-            Sign out
-          </button>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <button
+              className="text-accent transition-colors hover:text-accent-hover hover:underline"
+              onClick={async () => {
+                await logout();
+                navigate('/login');
+              }}
+            >
+              Sign out
+            </button>
+            {version && (
+              <span className="font-mono text-[11px] text-ink-400 dark:text-ink-500" title="Running version">
+                v{version}
+              </span>
+            )}
+          </div>
         </div>
         </div>
       </aside>
