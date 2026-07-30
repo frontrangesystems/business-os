@@ -176,8 +176,12 @@ export interface ModuleWorkerContext<TSettings = unknown> extends ModuleConnecto
    * bounded batch, persist progress, then enqueue itself for the next batch to
    * stay under the job time limit). Routes to `module:<slug>:<workerName>`.
    * Returns once the job is durably enqueued.
+   *
+   * Optional so a module built against this SDK stays assignable where an older
+   * SDK's worker-context type (without enqueue) is expected — the framework
+   * always provides it at runtime when a jobs backend is wired.
    */
-  enqueue(workerName: string, payload?: unknown): Promise<void>;
+  enqueue?(workerName: string, payload?: unknown): Promise<void>;
 }
 
 /**
