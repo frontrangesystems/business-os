@@ -270,6 +270,7 @@ export async function registerModuleBackgroundWorkers(opts: {
         ctx: {
           settings: unknown;
           logger: typeof workerLogger;
+          enqueue: (workerName: string, payload?: unknown) => Promise<void>;
           connector: (capability: string) => Promise<unknown>;
           connectorCredentials: (
             capability: string,
@@ -277,6 +278,17 @@ export async function registerModuleBackgroundWorkers(opts: {
         },
         payload: unknown,
       ) => Promise<void>;
+      // Lets a worker chain its own follow-up work (e.g. batched, resumable
+      // jobs), routed to module:<slug>:<name> just like the route-context enqueue.
+      const enqueue = async (nextWorker: string, payload?: unknown): Promise<void> => {
+        const enqueueJob = opts.trigger?.enqueueJob;
+        if (!enqueueJob) {
+          throw new Error(
+            `module ${slug}: ctx.enqueue('${nextWorker}') called but no jobs backend is wired (trigger.enqueueJob missing)`,
+          );
+        }
+        await enqueueJob(`module:${slug}:${nextWorker}`, payload);
+      };
       await subscribeJob(jobName, async (payload) => {
         // Resolve settings fresh per job so operator settings changes take
         // effect without a worker restart.
@@ -285,6 +297,7 @@ export async function registerModuleBackgroundWorkers(opts: {
           {
             settings,
             logger: workerLogger,
+            enqueue,
             ...buildModuleConnectorAccess(opts.trigger?.connectors, slug),
           },
           payload,
