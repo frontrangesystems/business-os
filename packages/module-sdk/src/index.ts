@@ -170,6 +170,14 @@ export interface ModuleWorkerContext<TSettings = unknown> extends ModuleConnecto
   settings: TSettings;
   /** Module-scoped logger pre-tagged with `module_slug` + the worker name. */
   logger: ModuleLogger;
+  /**
+   * Enqueue one of this module's own background workers — the same capability
+   * the route context has, so a worker can chain follow-up work (e.g. process a
+   * bounded batch, persist progress, then enqueue itself for the next batch to
+   * stay under the job time limit). Routes to `module:<slug>:<workerName>`.
+   * Returns once the job is durably enqueued.
+   */
+  enqueue(workerName: string, payload?: unknown): Promise<void>;
 }
 
 /**
