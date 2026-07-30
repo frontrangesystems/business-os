@@ -145,6 +145,14 @@ export function createJobsBackend(deps: JobsDeps): JobsBackend {
       if (opts?.idempotencyKey) {
         sendOpts.singletonKey = opts.idempotencyKey;
       }
+      // Module background workers (e.g. bid-indexer's OCR pipeline) can run far
+      // longer than pg-boss's 15-min default job expiry. If a job isn't finished
+      // in that window pg-boss reclaims it as "expired" and retries from scratch —
+      // a loop that never completes for large inputs (an 82 MB plan set took
+      // >15 min and got yanked mid-index). Give module jobs a 60-min ceiling.
+      if (name.startsWith('module:')) {
+        sendOpts.expireInMinutes = 60;
+      }
       const id = await boss.send(name, payload as object, sendOpts);
       if (!id) {
         if (opts?.idempotencyKey) {
