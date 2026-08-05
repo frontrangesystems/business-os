@@ -28,6 +28,15 @@ export interface ExtractionTaxonomy {
    * agency/jurisdiction). Only used when `extractMeta` is called.
    */
   metaGuidance?: string;
+  /**
+   * Mode B (narrative documents): the trade scope checklist. When a document
+   * has no pay-item schedule, scope is extracted by matching the specs/drawings
+   * against this fixed list (e.g. footings, slab-on-grade, reinforcing, embeds,
+   * tilt panels, mix design). Empty/absent => Mode B extraction is a no-op.
+   */
+  scopeChecklist?: string[];
+  /** Optional extra guidance appended to the Mode B scope prompt. */
+  scopeGuidance?: string;
 }
 
 /**
@@ -98,6 +107,25 @@ export function textPrompt(t: ExtractionTaxonomy): string {
 Return ONLY a JSON object, no prose, with these keys:
 - "page_type": one of ${t.pageTypes.join(', ')}
 - "bid_items": ${itemArraySpec(t)}
+
+PAGE TEXT:
+`;
+}
+
+/**
+ * Mode B scope-checklist prompt (one page/section of a narrative document).
+ * Asks which checklist items are evidenced on THIS page, with a verbatim
+ * snippet, using the checklist as ground truth so scope can't be invented.
+ * Page text is appended by the caller (mirrors `textPrompt`).
+ */
+export function scopePrompt(t: ExtractionTaxonomy): string {
+  const checklist = (t.scopeChecklist ?? []).map((c) => `- ${c}`).join('\n');
+  const guidance = t.scopeGuidance ? `${t.scopeGuidance}\n` : '';
+  return `You are an estimating assistant reading ONE page/section of a ${t.documentDescription} that has NO pay-item schedule — scope must be read from the specs and drawings. Below is the fixed TRADE SCOPE CHECKLIST.
+Return ONLY a JSON object {"present": [{"item": <one checklist item, copied verbatim from the list>, "status": "present" or "uncertain", "evidence": <short verbatim snippet from the page text, <=160 chars>}]} listing which checklist items are actually specified/shown on THIS page. Include an item ONLY if the text gives real evidence for it; use "uncertain" when the text hints but is ambiguous. Empty array if none. Do not invent items outside the checklist.
+${guidance}
+TRADE SCOPE CHECKLIST:
+${checklist}
 
 PAGE TEXT:
 `;

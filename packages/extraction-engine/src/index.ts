@@ -25,6 +25,15 @@ export type {
 export type { DetectShapeInput } from './shape.js';
 export { detectDocumentShape } from './shape.js';
 
+export type {
+  ScopeCitation,
+  ScopeStatus,
+  ScopeFinding,
+  ScopeResult,
+  ExtractScopeInput,
+} from './scope.js';
+export { extractScope, canonicalizeItem } from './scope.js';
+
 export type { Pricing, EngineTuning } from './config.js';
 export { OPUS_4_8_PRICING } from './config.js';
 
