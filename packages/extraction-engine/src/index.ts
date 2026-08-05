@@ -18,7 +18,12 @@ export type {
   PageSource,
   ParsedPage,
   ParseResult,
+  DocumentShape,
+  ShapeSignal,
 } from './types.js';
+
+export type { DetectShapeInput } from './shape.js';
+export { detectDocumentShape } from './shape.js';
 
 export type { Pricing, EngineTuning } from './config.js';
 export { OPUS_4_8_PRICING } from './config.js';

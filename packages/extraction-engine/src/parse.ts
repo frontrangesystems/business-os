@@ -12,6 +12,7 @@ import {
   textLayer,
 } from './pdf.js';
 import { extractItemsFromText, ocrPage, type OcrContext } from './ocr.js';
+import { detectDocumentShape } from './shape.js';
 import { mapWithConcurrency, nonWhitespaceLen, parseJsonReply } from './util.js';
 
 export interface ParseDocumentInput {
@@ -180,6 +181,16 @@ export async function parseDocument(input: ParseDocumentInput): Promise<ParseRes
   const items = [...itemMap.values()];
   logger.info({ logId, items: items.length }, 'extraction.items');
 
+  // Decide the document shape (schedule vs narrative) from what we already
+  // extracted — no extra LLM call. Consumers branch on this to pick Mode A
+  // (index the schedule rows) vs Mode B (extract scope against a checklist).
+  const shape = detectDocumentShape({
+    items,
+    pages: [...pageResults.values()],
+    captureQuantity: taxonomy.captureQuantity,
+  });
+  logger.info({ logId, shape: shape.shape, reason: shape.reason }, 'extraction.shape');
+
   const costUsd = Number(
     (
       (inputTokens / 1_000_000) * pricing.inputUsdPerMTok +
@@ -195,6 +206,7 @@ export async function parseDocument(input: ParseDocumentInput): Promise<ParseRes
     pages: parsedPages,
     pageTexts,
     summaryPages: summaryPages.sort((a, b) => a - b),
+    shape,
     pageCount,
     visionPages: visionPages.length,
     textPages: textPages.length,
