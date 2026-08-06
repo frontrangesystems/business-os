@@ -14,10 +14,15 @@ import type {
 import {
   parseDocument,
   extractMeta,
+  extractScope,
   createAnthropicVisionClient,
 } from '@frontrangesystems/business-os-extraction-engine';
 
-import { documentParserDocuments, documentParserItems } from './schema.js';
+import {
+  documentParserDocuments,
+  documentParserItems,
+  documentParserScopeFindings,
+} from './schema.js';
 import { getObject } from './storage.js';
 import { replacePages } from './pages.js';
 import { buildTaxonomy, pricingFor, type Settings } from './settings.js';
@@ -147,12 +152,52 @@ export const parseDocumentHandler: ModuleBackgroundWorkerHandler<Settings> = asy
     // Mirror page text into Postgres for full-text search.
     await replacePages(db, doc.id, result.pageTexts);
 
+    // Mode B — narrative documents have no pay-item schedule, so `items` above
+    // is (near) empty. Read scope from the specs/drawings against the trade
+    // scope checklist instead (a cheap text-only pass over the page text we
+    // already have — no re-OCR). Mode A (schedule) docs skip this entirely.
+    let scopeCostUsd = 0;
+    if (result.shape.shape === 'narrative') {
+      const scope = await extractScope({
+        vision,
+        model,
+        pricing: pricingFor(model),
+        taxonomy,
+        pageTexts: result.pageTexts,
+        logger: ctx.logger,
+        logId: doc.id,
+      });
+      scopeCostUsd = scope.costUsd;
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(documentParserScopeFindings)
+          .where(eq(documentParserScopeFindings.documentId, doc.id));
+        if (scope.findings.length > 0) {
+          await tx.insert(documentParserScopeFindings).values(
+            scope.findings.map((f) => ({
+              documentId: doc.id,
+              item: f.item,
+              status: f.status,
+              citations: f.citations,
+            })),
+          );
+        }
+      });
+      ctx.logger.info(
+        { documentId: doc.id, findings: scope.findings.length, covered: scope.coveredCount, costUsd: scope.costUsd },
+        'document-parser.parse.scope',
+      );
+    }
+
+    const totalCostUsd = Number((result.costUsd + scopeCostUsd).toFixed(4));
+
     await db
       .update(documentParserDocuments)
       .set({
         status: 'parsed',
         pageCount: result.pageCount,
-        costUsd: num(result.costUsd),
+        shape: result.shape.shape,
+        costUsd: num(totalCostUsd),
         parsedAt: new Date(),
         suggestedTitle: meta.title,
         jurisdiction: meta.jurisdiction ?? doc.jurisdiction,
@@ -163,11 +208,12 @@ export const parseDocumentHandler: ModuleBackgroundWorkerHandler<Settings> = asy
     ctx.logger.info(
       {
         documentId: doc.id,
+        shape: result.shape.shape,
         items: result.items.length,
         pages: result.pageCount,
         visionPages: result.visionPages,
         textPages: result.textPages,
-        costUsd: result.costUsd,
+        costUsd: totalCostUsd,
       },
       'document-parser.parse.parsed',
     );

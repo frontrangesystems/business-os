@@ -1,7 +1,7 @@
 # Extraction Mode B — document-type flexibility for the shared engine
 
 **Date:** 2026-08-05
-**Status:** In progress. Phase 1 landed.
+**Status:** In progress. Phases 1–2 landed.
 **Owner:** framework
 **Related:** [2026-07-08 bid-indexer decompose](2026-07-08-bid-indexer-decompose-into-agents.md), [2026-07-25 document-parser pilot](2026-07-25-document-parser-pilot.md)
 
@@ -54,14 +54,23 @@ but no quantities and must NOT anchor as the scope of work.
   page types already produced — no extra LLM call. Surfaced on
   `ParseResult.shape` and logged. Unit-tested (7 cases incl. the mo-barracks
   unit-price-form case → narrative).
-- **Phase 2 — Mode B extraction path.** A checklist-driven prompt + extract
-  functions paralleling the existing vision/text seam; a new result type
-  (checklist item + present/uncertain + citations + snippet), a new
-  `document-parser` table, and a branch in the parse worker keyed on `shape`.
-  The existing Mode A path stays untouched.
-- **Phase 3 — config.** Trade + scope checklist become per-install settings
-  (single checklist per install first; multi-trade selectable later). Also
-  expose `metaGuidance` (currently the one non-configurable taxonomy field).
+- **Phase 2 — Mode B extraction path. ✅ Done.** Engine side (commit `4f0fa76`):
+  `extractScope()` + `scopePrompt`/`scopeChecklist` on the taxonomy, a
+  `ScopeResult` type (checklist item + present/uncertain + capped verbatim
+  citations), checklist-as-ground-truth (invented items dropped). Module side:
+  a `document_parser_scope_findings` table (migration `0002`, JSON citations) +
+  a `shape` column on documents; the parse worker now branches on
+  `result.shape` — narrative docs run `extractScope` over the page text
+  `parseDocument` already produced (no re-OCR) and persist findings, schedule
+  docs are unchanged; scope cost is folded into the document's `costUsd`.
+  Findings surface on `GET /documents/:id`. The checklist + optional guidance
+  are per-install settings with a concrete-trade default (this also lands the
+  Phase 3 checklist knob early). Integration-tested against real Postgres. UI
+  to render findings is still to do.
+- **Phase 3 — config.** Trade + scope checklist per-install settings **landed
+  in Phase 2** (`scopeChecklist` + `scopeGuidance`, concrete-trade default,
+  single checklist per install). Remaining: multi-trade selectable, and expose
+  `metaGuidance` (currently the one non-configurable taxonomy field).
 - **Phase 4 — migrate C&M.** Point the C&M bid-indexer at the shared engine and
   port its stronger multi-page ref-linking (where the ref-threshold "D1" fix
   lands), behind a byte-identical regression gate on the DOT set so C&M's output

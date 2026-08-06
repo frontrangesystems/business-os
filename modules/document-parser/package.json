@@ -1,6 +1,6 @@
 {
   "name": "@frontrangesystems/business-os-module-document-parser",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Document Parser — upload plan sets/specs, extract a structured takeoff (pay-items with quantity) via the shared extraction engine, search page text, export CSV. The pilot product; single-tenant, no bid-workflow.",
   "type": "module",
   "main": "./dist/server/index.js",
