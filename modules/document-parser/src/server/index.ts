@@ -15,7 +15,11 @@ import {
 } from '@frontrangesystems/business-os-module-sdk';
 import { requireUser } from '@frontrangesystems/business-os-core';
 
-import { documentParserDocuments, documentParserItems } from './schema.js';
+import {
+  documentParserDocuments,
+  documentParserItems,
+  documentParserScopeFindings,
+} from './schema.js';
 import { SettingsSchema, type Settings } from './settings.js';
 import { putStream, getObject, deleteObject } from './storage.js';
 import { parseDocumentHandler } from './parse-worker.js';
@@ -81,6 +85,7 @@ function serializeDocument(row: typeof documentParserDocuments.$inferSelect): Re
     id: row.id,
     originalFilename: row.originalFilename,
     status: row.status,
+    shape: row.shape,
     pageCount: row.pageCount,
     title: row.title,
     suggestedTitle: row.suggestedTitle,
@@ -90,6 +95,17 @@ function serializeDocument(row: typeof documentParserDocuments.$inferSelect): Re
     uploadedAt: row.uploadedAt instanceof Date ? row.uploadedAt.toISOString() : row.uploadedAt,
     parsedAt: row.parsedAt instanceof Date ? row.parsedAt.toISOString() : row.parsedAt,
     error: row.error,
+  };
+}
+
+function serializeScopeFinding(
+  row: typeof documentParserScopeFindings.$inferSelect,
+): Record<string, unknown> {
+  return {
+    id: row.id,
+    item: row.item,
+    status: row.status,
+    citations: row.citations,
   };
 }
 
@@ -124,7 +140,7 @@ export default defineModule({
   uiPages: navPages,
   manifest: {
     slug: 'document-parser',
-    version: '0.0.1',
+    version: '0.0.2',
     displayName: 'Document Parser',
     description: 'Upload plan sets/specs; extract a structured takeoff (pay-items with quantity), search page text, and export CSV.',
     settingsSchema: SettingsSchema,
@@ -286,7 +302,16 @@ export default defineModule({
         .from(documentParserItems)
         .where(eq(documentParserItems.documentId, id))
         .orderBy(documentParserItems.pageNo, documentParserItems.createdAt);
-      return { ...serializeDocument(row), items: items.map(serializeItem) };
+      const scopeFindings = await db
+        .select()
+        .from(documentParserScopeFindings)
+        .where(eq(documentParserScopeFindings.documentId, id))
+        .orderBy(documentParserScopeFindings.createdAt);
+      return {
+        ...serializeDocument(row),
+        items: items.map(serializeItem),
+        scopeFindings: scopeFindings.map(serializeScopeFinding),
+      };
     });
 
     /** PATCH /documents/:id — set the operator title. */
@@ -430,4 +455,4 @@ export default defineModule({
   },
 });
 
-export { documentParserDocuments, documentParserItems } from './schema.js';
+export { documentParserDocuments, documentParserItems, documentParserScopeFindings } from './schema.js';

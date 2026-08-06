@@ -42,6 +42,29 @@ export interface LlmUsage {
   outputTokens: number;
 }
 
+/**
+ * Which shape a document takes, deciding how scope is extracted:
+ *  - `schedule` — the owner published a schedule of pay-items with populated
+ *    quantities (public/DOT horizontal work). Extract the rows. (Mode A)
+ *  - `narrative` — no schedule; scope lives in specs + drawings and the
+ *    contractor derives it (building/commercial work). Extract against a trade
+ *    scope checklist. (Mode B)
+ */
+export type DocumentShape = 'schedule' | 'narrative';
+
+/** The document-shape verdict plus the signals it was decided from. */
+export interface ShapeSignal {
+  shape: DocumentShape;
+  /** Items carrying a populated numeric quantity — the key schedule signal. */
+  quantifiedItems: number;
+  /** Total deduped items found across the document. */
+  totalItems: number;
+  /** Whether any page was model-labelled as the bid summary/schedule. */
+  hasSummaryPage: boolean;
+  /** Human-readable explanation of the verdict (for logs + the operator UI). */
+  reason: string;
+}
+
 /** How a page's text + items were obtained. */
 export type PageSource = 'text' | 'vision';
 
@@ -69,6 +92,13 @@ export interface ParseResult {
   pageTexts: Map<number, string>;
   /** Page(s) that look like the bid summary / schedule of items. */
   summaryPages: number[];
+  /**
+   * Whether this document carries a populated pay-item schedule (`schedule`,
+   * Mode A) or is narrative specs/drawings with no schedule (`narrative`,
+   * Mode B). Decided deterministically from the extracted items + page types —
+   * no extra LLM call. Consumers branch on this to pick the extraction path.
+   */
+  shape: ShapeSignal;
   /** Total pages in the PDF. */
   pageCount: number;
   /** How many pages were processed via vision OCR. */

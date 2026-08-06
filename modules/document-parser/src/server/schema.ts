@@ -1,4 +1,5 @@
-import { pgTable, text, integer, numeric, boolean, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, numeric, boolean, timestamp, uuid, jsonb } from 'drizzle-orm/pg-core';
+import type { ScopeCitation } from '@frontrangesystems/business-os-extraction-engine';
 
 /**
  * Document Parser — module-owned schema. Deliberately NO bid-workflow tables
@@ -25,6 +26,11 @@ export const documentParserDocuments = pgTable('document_parser_documents', {
   /** Auto-extracted title from the cover sheet during parsing (a prefill). */
   suggestedTitle: text('suggested_title'),
   jurisdiction: text('jurisdiction'),
+  /**
+   * Which shape the extractor resolved to: 'schedule' (Mode A — pay-item rows)
+   * or 'narrative' (Mode B — scope read from specs/drawings). Null until parsed.
+   */
+  shape: text('shape'),
   /** Estimated extraction cost in USD (tokens × pricing). */
   costUsd: numeric('cost_usd'),
   uploadedBy: uuid('uploaded_by'),
@@ -69,4 +75,22 @@ export const documentParserPages = pgTable('document_parser_pages', {
   documentId: uuid('document_id').notNull(),
   pageNo: integer('page_no').notNull(),
   content: text('content').notNull().default(''),
+});
+
+/**
+ * Mode B scope findings — one row per trade-scope checklist item the engine
+ * found evidence for in a narrative document. `citations` holds the verbatim
+ * supporting snippets ({page, snippet}). Only populated for narrative-shape
+ * documents; Mode A schedule docs use `documentParserItems` instead.
+ */
+export const documentParserScopeFindings = pgTable('document_parser_scope_findings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  documentId: uuid('document_id').notNull(),
+  /** Canonical checklist item (verbatim from the configured scope checklist). */
+  item: text('item').notNull(),
+  /** 'present' = clear evidence; 'uncertain' = the text hints but is ambiguous. */
+  status: text('status').notNull().default('present'),
+  /** Verbatim supporting snippets, capped by the engine. */
+  citations: jsonb('citations').$type<ScopeCitation[]>().notNull().default([]),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
