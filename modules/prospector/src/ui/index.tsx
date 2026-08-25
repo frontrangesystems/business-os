@@ -138,10 +138,16 @@ function Thumbs({
 export function ProspectorHomePage(): JSX.Element {
   const [sections, setSections] = useState<HomeSection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Sort for the "New bids worth a look" section. 'score' = ranked by fit
+  // (default); 'due' = latest due date first, so fresh postings surface on top
+  // and get caught early.
+  const [sort, setSort] = useState<SortKey>('score');
 
   const reload = async (): Promise<void> => {
     try {
-      const r = await fetchJson<{ sections: HomeSection[] }>('/api/modules/prospector/home');
+      const r = await fetchJson<{ sections: HomeSection[] }>(
+        `/api/modules/prospector/home?sort=${sort}`,
+      );
       setSections(r.sections);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'load failed');
@@ -149,8 +155,10 @@ export function ProspectorHomePage(): JSX.Element {
   };
 
   useEffect(() => {
+    setSections(null);
     void reload();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort]);
 
   const updateRating = (cardId: string, rating: 1 | -1): void => {
     if (!sections) return;
@@ -182,10 +190,26 @@ export function ProspectorHomePage(): JSX.Element {
       ) : (
         sections.map((section) => (
           <section key={section.id} className="mb-8">
-            <div className="mb-3 flex items-baseline gap-3">
+            <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-2">
               <h2 className="text-base font-semibold">{section.title}</h2>
               {section.subtitle && (
                 <p className="text-xs text-ink-500">{section.subtitle}</p>
+              )}
+              {section.id === 'new-bids' && (
+                <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-600 dark:text-ink-400">
+                  Sort
+                  <select
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value as SortKey)}
+                    className="rounded-full border border-ink-200 bg-white px-2.5 py-1 text-xs text-ink-700 hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300 dark:hover:bg-ink-800"
+                  >
+                    {SORT_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               )}
             </div>
             {section.cards.length === 0 ? (
