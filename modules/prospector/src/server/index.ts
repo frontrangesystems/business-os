@@ -182,6 +182,11 @@ export default defineModule({
      * Two sections:
      *   - New bids worth a look (status='new', score ≥ minDashboardScore)
      *   - Recently reviewed (cards the caller has thumbed, most recent first)
+     *
+     * ?sort=score (default) ranks the "new bids" section by fit; ?sort=due ranks
+     * it by due date (latest first, nulls last) so freshly-posted bids surface on
+     * top and get caught early. Only the "new bids" section is affected; "recently
+     * reviewed" always stays most-recently-reviewed first.
      */
     app.get(
       '/home',
@@ -191,6 +196,11 @@ export default defineModule({
         const min = ctx.settings.minDashboardScore;
         const size = ctx.settings.newSectionSize;
         const reviewedLimit = 10;
+        const sort = (req.query as { sort?: string }).sort === 'due' ? 'due' : 'score';
+        const newOrderBy =
+          sort === 'due'
+            ? [sql`${bidWatcherSeen.bidsDueAt} DESC NULLS LAST`, desc(bidWatcherSeen.score)]
+            : [desc(bidWatcherSeen.score), desc(bidWatcherSeen.firstSeenAt)];
 
         const newRows = await db
           .select({
@@ -221,7 +231,7 @@ export default defineModule({
             sql`${bidWatcherSeen.score} >= ${min}`,
             sql`${prospectorBidFeedback.rating} IS NULL`,
           ))
-          .orderBy(desc(bidWatcherSeen.score), desc(bidWatcherSeen.firstSeenAt))
+          .orderBy(...newOrderBy)
           .limit(size);
 
         // "Recently reviewed" — driven from feedback table (most recent first).
