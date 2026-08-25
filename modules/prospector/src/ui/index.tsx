@@ -249,6 +249,13 @@ const FILTER_OPTIONS: Array<{ id: BidFilter; label: string }> = [
   { id: 'not-reviewed', label: 'Not reviewed' },
 ];
 
+type SortKey = 'score' | 'due';
+
+const SORT_OPTIONS: Array<{ id: SortKey; label: string }> = [
+  { id: 'score', label: 'Ranking' },
+  { id: 'due', label: 'Due date (newest first)' },
+];
+
 export function ProspectorBidsPage(): JSX.Element {
   const [bids, setBids] = useState<BidRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -256,6 +263,10 @@ export function ProspectorBidsPage(): JSX.Element {
   // Default to the recommended set so the operator lands on bids worth rating,
   // one toggle away from the full list.
   const [recommendedOnly, setRecommendedOnly] = useState(true);
+  // Sort order. 'score' = highest ranking first (default). 'due' = latest due
+  // date first, so newly-posted bids (longest lead time) sit on top and get
+  // caught early.
+  const [sort, setSort] = useState<SortKey>('score');
   const [minScore, setMinScore] = useState<number | null>(null);
 
   useEffect(() => {
@@ -264,7 +275,7 @@ export function ProspectorBidsPage(): JSX.Element {
     void (async () => {
       try {
         const r = await fetchJson<{ bids: BidRow[]; minScore: number }>(
-          `/api/modules/prospector/bids?limit=100&filter=${filter}${recommendedOnly ? '&recommended=1' : ''}`,
+          `/api/modules/prospector/bids?limit=100&filter=${filter}${recommendedOnly ? '&recommended=1' : ''}&sort=${sort}`,
         );
         if (!cancelled) {
           setBids(r.bids);
@@ -277,7 +288,7 @@ export function ProspectorBidsPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [filter, recommendedOnly]);
+  }, [filter, recommendedOnly, sort]);
 
   const updateRating = (source: string, externalId: string, rating: 1 | -1): void => {
     setBids((prev) =>
@@ -294,7 +305,7 @@ export function ProspectorBidsPage(): JSX.Element {
       <header className="mb-6">
         <h1 className="text-lg font-semibold">All bids</h1>
         <p className="text-sm text-ink-500">
-          Ranked by score. Showing{' '}
+          {sort === 'due' ? 'Newest due dates first' : 'Ranked by score'}. Showing{' '}
           {recommendedOnly
             ? `recommended bids${minScore !== null ? ` (score ≥ ${minScore})` : ''}`
             : 'every bid the watcher has surfaced'}
@@ -330,6 +341,21 @@ export function ProspectorBidsPage(): JSX.Element {
         >
           {recommendedOnly ? '★ Recommended only' : 'Showing all — recommended only?'}
         </button>
+        <span className="mx-1 h-5 w-px bg-ink-200 dark:bg-ink-700" aria-hidden />
+        <label className="flex items-center gap-1.5 text-sm text-ink-600 dark:text-ink-400">
+          Sort
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="rounded-full border border-ink-200 bg-white px-3 py-1 text-sm text-ink-700 hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300 dark:hover:bg-ink-800"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {error && (
