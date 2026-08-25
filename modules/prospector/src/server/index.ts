@@ -92,6 +92,10 @@ export default defineModule({
      *   ?filter=not-reviewed             only bids the caller hasn't rated yet
      *   ?filter=all (default)            no rating filter
      *   ?recommended=1                   only bids scoring ≥ minDashboardScore
+     *   ?sort=score (default)            ranking: highest score first
+     *   ?sort=due                        due date, latest first (newest postings on
+     *                                    top, so fresh opportunities are caught early);
+     *                                    bids with no due date sort last
      *   ?limit=<n>                       cap rows (default newSectionSize, max 100)
      */
     app.get(
@@ -99,7 +103,20 @@ export default defineModule({
       { preHandler: requireUser },
       async (req: FastifyRequest) => {
         const userId = req.user!.id;
-        const q = req.query as { limit?: string; status?: string; filter?: string; recommended?: string };
+        const q = req.query as {
+          limit?: string;
+          status?: string;
+          filter?: string;
+          recommended?: string;
+          sort?: string;
+        };
+        const sort = q.sort === 'due' ? 'due' : 'score';
+        // 'due' => latest due date first, nulls last, score as tiebreak.
+        // 'score' (default) => highest score first, newest-seen as tiebreak.
+        const orderBy =
+          sort === 'due'
+            ? [sql`${bidWatcherSeen.bidsDueAt} DESC NULLS LAST`, desc(bidWatcherSeen.score)]
+            : [desc(bidWatcherSeen.score), desc(bidWatcherSeen.firstSeenAt)];
         const limit = Number(q.limit ?? ctx.settings.newSectionSize);
         const status = q.status ?? null;
         const filter = q.filter ?? 'all';
@@ -146,7 +163,7 @@ export default defineModule({
             ratingClause,
             recommendedOnly ? gte(bidWatcherSeen.score, minScore) : sql`TRUE`,
           ))
-          .orderBy(desc(bidWatcherSeen.score), desc(bidWatcherSeen.firstSeenAt))
+          .orderBy(...orderBy)
           .limit(Math.min(limit, 100));
 
         return {
