@@ -26,6 +26,36 @@ import { prospectorBidFeedback, bidWatcherSeen } from './schema.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+// Default reason menus (one per line). These are generic construction defaults;
+// each install edits them in settings to match how THEIR estimators actually
+// judge fit — so the reason menu resells to any trade without a code change.
+const DEFAULT_PASS_REASONS = [
+  'Wrong location / out of area',
+  'Wrong trade or scope',
+  'Too small',
+  'Too big / over capacity',
+  'Deadline too tight',
+  'Wrong owner or agency',
+  'Margin too low',
+  'Already covered',
+  'Missing bonding / prequal',
+].join('\n');
+const DEFAULT_FIT_REASONS = [
+  'Core scope match',
+  'Right size',
+  'Good location',
+  'Strong margin',
+  'Good owner / agency',
+].join('\n');
+
+/** Split a newline-separated reason setting into a trimmed, non-empty list. */
+export function parseReasonList(raw: string): string[] {
+  return raw
+    .split('\n')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
 const SettingsSchema = z.object({
   newSectionSize: z
     .number()
@@ -54,12 +84,29 @@ const SettingsSchema = z.object({
     .describe(
       'How many recommended bids to preview on the Home dashboard card. Default 10. Tap through to Prospector for the full list.',
     ),
+  passReasons: z
+    .string()
+    .max(2000)
+    .default(DEFAULT_PASS_REASONS)
+    .describe(
+      'Reasons offered when an operator marks a bid "Fewer like this" (👎), one per line. Edit to match how your estimators actually pass on a job — these teach the AI what to down-rank. Leave a trailing "Other" off; the note box always covers anything not listed.',
+    ),
+  fitReasons: z
+    .string()
+    .max(2000)
+    .default(DEFAULT_FIT_REASONS)
+    .describe(
+      'Reasons offered when an operator marks a bid "More like this" (👍), one per line. Edit to match what makes a job a strong fit for your shop — these teach the AI what to surface more of.',
+    ),
 });
 type Settings = z.infer<typeof SettingsSchema>;
 
 const FeedbackRequest = z.object({
   rating: z.union([z.literal(1), z.literal(-1)]),
+  // `reason` = a picked tag from the operator's configurable menu; `note` =
+  // optional free text. Both are optional so a bare thumb still records instantly.
   reason: z.string().max(500).optional(),
+  note: z.string().max(500).optional(),
 });
 
 function buildDb(): ReturnType<typeof drizzle> {
@@ -168,6 +215,10 @@ export default defineModule({
 
         return {
           minScore,
+          reasonOptions: {
+            fit: parseReasonList(ctx.settings.fitReasons),
+            pass: parseReasonList(ctx.settings.passReasons),
+          },
           bids: rows.map((r) => ({
             ...r,
             estimatedValue: r.estimatedValue !== null ? Number(r.estimatedValue) : null,
@@ -280,6 +331,10 @@ export default defineModule({
         });
 
         return {
+          reasonOptions: {
+            fit: parseReasonList(ctx.settings.fitReasons),
+            pass: parseReasonList(ctx.settings.passReasons),
+          },
           sections: [
             {
               id: 'new-bids',
@@ -322,6 +377,7 @@ export default defineModule({
             externalId,
             rating: parsed.data.rating,
             reason: parsed.data.reason ?? null,
+            note: parsed.data.note ?? null,
           })
           .onConflictDoUpdate({
             target: [
@@ -332,6 +388,7 @@ export default defineModule({
             set: {
               rating: parsed.data.rating,
               reason: parsed.data.reason ?? null,
+              note: parsed.data.note ?? null,
               updatedAt: new Date(),
             },
           });
@@ -509,6 +566,10 @@ export interface FeedbackExample {
   estimatedValue: number | null;
   score: number | null;
   scoreReason: string | null;
+  /** Operator's picked reason tag for this thumb (why more/fewer like this). */
+  reason: string | null;
+  /** Operator's optional free-text note. */
+  note: string | null;
 }
 
 /**
@@ -531,6 +592,8 @@ export async function getFeedbackExamples(
       estimatedValue: bidWatcherSeen.estimatedValue,
       score: bidWatcherSeen.score,
       scoreReason: bidWatcherSeen.scoreReason,
+      reason: prospectorBidFeedback.reason,
+      note: prospectorBidFeedback.note,
     })
     .from(prospectorBidFeedback)
     .innerJoin(
@@ -550,5 +613,7 @@ export async function getFeedbackExamples(
     estimatedValue: r.estimatedValue !== null ? Number(r.estimatedValue) : null,
     score: r.score,
     scoreReason: r.scoreReason,
+    reason: r.reason,
+    note: r.note,
   }));
 }

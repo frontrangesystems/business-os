@@ -59,16 +59,29 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+interface ReasonOptions {
+  fit: string[];
+  pass: string[];
+}
+
+const EMPTY_REASONS: ReasonOptions = { fit: [], pass: [] };
+
 async function postFeedback(
   source: string,
   externalId: string,
   rating: 1 | -1,
+  reason?: string | null,
+  note?: string | null,
 ): Promise<void> {
   await fetchJson(
     `/api/modules/prospector/bids/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/feedback`,
     {
       method: 'POST',
-      body: JSON.stringify({ rating }),
+      body: JSON.stringify({
+        rating,
+        ...(reason ? { reason } : {}),
+        ...(note && note.trim() ? { note: note.trim() } : {}),
+      }),
     },
   );
 }
@@ -88,49 +101,131 @@ function ScoreBadge({ value }: { value: number | null }): JSX.Element | null {
   );
 }
 
+/**
+ * Feedback control. Two labeled buttons — "More like this" (👍) / "Fewer like
+ * this" (👎) — so the action is self-explanatory. Clicking one records the
+ * rating immediately (stays fast), then reveals a reason panel: quick-pick tags
+ * (from the operator's configurable menu) + an optional note. The reason is what
+ * turns a thumb into real training signal for the scorer.
+ */
 function Thumbs({
   source,
   externalId,
   current,
+  reasons,
   onChange,
 }: {
   source: string;
   externalId: string;
   current: -1 | 1 | null;
+  reasons: ReasonOptions;
   onChange: (next: -1 | 1) => void;
 }): JSX.Element {
   const [busy, setBusy] = useState(false);
-  const click = async (rating: 1 | -1): Promise<void> => {
+  const [rating, setRating] = useState<-1 | 1 | null>(current);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+
+  const save = async (r: 1 | -1, reasonVal: string | null, noteVal: string): Promise<void> => {
     setBusy(true);
     try {
-      await postFeedback(source, externalId, rating);
-      onChange(rating);
+      await postFeedback(source, externalId, r, reasonVal, noteVal);
     } catch {
       // surfaced by reload; keep UI optimistic
     } finally {
       setBusy(false);
     }
   };
+
+  const clickThumb = (r: 1 | -1): void => {
+    if (r === rating) {
+      // Same direction — just toggle the reason panel. Don't re-save (that would
+      // wipe a reason already stored for this bid).
+      setOpen((o) => !o);
+      return;
+    }
+    // New / changed direction: record instantly with a cleared reason (a 👎's
+    // pass-reason doesn't carry over to a 👍), then open the panel to capture why.
+    setRating(r);
+    setReason(null);
+    setNote('');
+    setOpen(true);
+    onChange(r);
+    void save(r, null, '');
+  };
+
+  const pickReason = (tag: string): void => {
+    if (!rating) return;
+    const next = reason === tag ? null : tag; // click again to clear
+    setReason(next);
+    void save(rating, next, note);
+  };
+
+  const tags = rating === 1 ? reasons.fit : rating === -1 ? reasons.pass : [];
+
   return (
-    <div className="flex gap-2">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void click(1)}
-        className={`rounded border px-2 py-1 text-sm ${current === 1 ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/40' : 'border-ink-200 dark:border-ink-700'}`}
-        aria-label="Worth bidding on"
-      >
-        👍
-      </button>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void click(-1)}
-        className={`rounded border px-2 py-1 text-sm ${current === -1 ? 'border-red-500 bg-red-50 dark:bg-red-900/40' : 'border-ink-200 dark:border-ink-700'}`}
-        aria-label="Not a fit"
-      >
-        👎
-      </button>
+    <div className="flex flex-col items-end gap-2">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => clickThumb(1)}
+          title="Surface more bids like this"
+          aria-pressed={rating === 1}
+          className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-sm ${rating === 1 ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/40' : 'border-ink-200 hover:bg-ink-50 dark:border-ink-700 dark:hover:bg-ink-800'}`}
+        >
+          👍 <span className="whitespace-nowrap">More like this</span>
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => clickThumb(-1)}
+          title="Surface fewer bids like this"
+          aria-pressed={rating === -1}
+          className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-sm ${rating === -1 ? 'border-red-500 bg-red-50 dark:bg-red-900/40' : 'border-ink-200 hover:bg-ink-50 dark:border-ink-700 dark:hover:bg-ink-800'}`}
+        >
+          👎 <span className="whitespace-nowrap">Fewer like this</span>
+        </button>
+      </div>
+
+      {open && rating !== null && (
+        <div className="w-full max-w-xs rounded-md border border-ink-200 bg-ink-50/60 p-2.5 text-left dark:border-ink-700 dark:bg-ink-800/40">
+          <div className="mb-1.5 text-xs font-medium text-ink-600 dark:text-ink-300">
+            {rating === 1 ? "Why is it a fit?" : 'Why pass?'}{' '}
+            <span className="font-normal text-ink-400">(optional — helps the AI learn)</span>
+          </div>
+          {tags.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1">
+              {tags.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => pickReason(t)}
+                  className={`rounded-full border px-2 py-0.5 text-xs transition ${
+                    reason === t
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-ink-200 text-ink-600 hover:bg-ink-100 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-700'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onBlur={() => rating !== null && void save(rating, reason, note)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+            placeholder="Add a note (optional)"
+            className="w-full rounded border border-ink-200 bg-white px-2 py-1 text-xs dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -142,13 +237,15 @@ export function ProspectorHomePage(): JSX.Element {
   // (default); 'due' = latest due date first, so fresh postings surface on top
   // and get caught early.
   const [sort, setSort] = useState<SortKey>('score');
+  const [reasons, setReasons] = useState<ReasonOptions>(EMPTY_REASONS);
 
   const reload = async (): Promise<void> => {
     try {
-      const r = await fetchJson<{ sections: HomeSection[] }>(
+      const r = await fetchJson<{ sections: HomeSection[]; reasonOptions?: ReasonOptions }>(
         `/api/modules/prospector/home?sort=${sort}`,
       );
       setSections(r.sections);
+      if (r.reasonOptions) setReasons(r.reasonOptions);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'load failed');
     }
@@ -250,6 +347,7 @@ export function ProspectorHomePage(): JSX.Element {
                         source={card.source}
                         externalId={card.externalId}
                         current={card.myRating}
+                        reasons={reasons}
                         onChange={(rating) => updateRating(card.id, rating)}
                       />
                     </div>
@@ -292,18 +390,20 @@ export function ProspectorBidsPage(): JSX.Element {
   // caught early.
   const [sort, setSort] = useState<SortKey>('score');
   const [minScore, setMinScore] = useState<number | null>(null);
+  const [reasons, setReasons] = useState<ReasonOptions>(EMPTY_REASONS);
 
   useEffect(() => {
     let cancelled = false;
     setBids(null);
     void (async () => {
       try {
-        const r = await fetchJson<{ bids: BidRow[]; minScore: number }>(
+        const r = await fetchJson<{ bids: BidRow[]; minScore: number; reasonOptions?: ReasonOptions }>(
           `/api/modules/prospector/bids?limit=100&filter=${filter}${recommendedOnly ? '&recommended=1' : ''}&sort=${sort}`,
         );
         if (!cancelled) {
           setBids(r.bids);
           setMinScore(r.minScore);
+          if (r.reasonOptions) setReasons(r.reasonOptions);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'load failed');
@@ -444,6 +544,7 @@ export function ProspectorBidsPage(): JSX.Element {
                       source={b.source}
                       externalId={b.externalId}
                       current={b.myRating}
+                      reasons={reasons}
                       onChange={(rating) => updateRating(b.source, b.externalId, rating)}
                     />
                   </td>
