@@ -12,7 +12,10 @@ export const prospectorBidFeedback = pgTable(
     source: text('source').notNull(),
     externalId: text('external_id').notNull(),
     rating: smallint('rating').notNull(),
+    // `reason` = the picked reason tag (from the operator's configurable menu);
+    // `note` = optional free-text the tags don't cover. Both feed the scorer.
     reason: text('reason'),
+    note: text('note'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
