@@ -14,7 +14,7 @@ import {
   type DashboardContribution,
 } from '@frontrangesystems/business-os-module-sdk';
 import { requireUser } from '@frontrangesystems/business-os-core';
-import { prospectorBidFeedback, bidWatcherSeen } from './schema.js';
+import { prospectorBidFeedback, bidWatcherSeen, prospectorMissedJob } from './schema.js';
 
 /**
  * @frontrangesystems/business-os-module-prospector
@@ -107,6 +107,19 @@ const FeedbackRequest = z.object({
   // optional free text. Both are optional so a bare thumb still records instantly.
   reason: z.string().max(500).optional(),
   note: z.string().max(500).optional(),
+});
+
+// Report of a job the Prospector missed. `url` is the only hard requirement —
+// the operator can flag a job with just a link and fill in context later.
+const MissedJobRequest = z.object({
+  url: z.string().trim().url().max(2000),
+  title: z.string().trim().max(300).optional(),
+  foundVia: z.string().trim().max(200).optional(),
+  note: z.string().trim().max(1000).optional(),
+});
+
+const MissedJobResolveRequest = z.object({
+  status: z.union([z.literal('open'), z.literal('resolved')]).default('resolved'),
 });
 
 function buildDb(): ReturnType<typeof drizzle> {
@@ -402,6 +415,102 @@ export default defineModule({
       },
     );
 
+    /**
+     * GET /api/modules/prospector/missed-jobs
+     * List reported-missed jobs. Default: open reports only (the working
+     * queue), newest first. ?status=all includes resolved ones.
+     *
+     * Not user-scoped — a missed-job report is a shared coverage-gap signal,
+     * so every operator sees (and can clear) the same queue.
+     */
+    app.get(
+      '/missed-jobs',
+      { preHandler: requireUser },
+      async (req: FastifyRequest) => {
+        const status = (req.query as { status?: string }).status;
+        const rows = await db
+          .select({
+            id: prospectorMissedJob.id,
+            url: prospectorMissedJob.url,
+            title: prospectorMissedJob.title,
+            foundVia: prospectorMissedJob.foundVia,
+            note: prospectorMissedJob.note,
+            status: prospectorMissedJob.status,
+            createdAt: prospectorMissedJob.createdAt,
+          })
+          .from(prospectorMissedJob)
+          .where(status === 'all' ? sql`TRUE` : eq(prospectorMissedJob.status, 'open'))
+          .orderBy(desc(prospectorMissedJob.createdAt))
+          .limit(100);
+        return { missedJobs: rows };
+      },
+    );
+
+    /**
+     * POST /api/modules/prospector/missed-jobs
+     * Flag a job the Prospector should have surfaced but didn't.
+     */
+    app.post(
+      '/missed-jobs',
+      { preHandler: requireUser },
+      async (req: FastifyRequest, reply: FastifyReply) => {
+        const userId = req.user!.id;
+        const parsed = MissedJobRequest.safeParse(req.body);
+        if (!parsed.success) {
+          reply.code(400).send({ error: 'invalid_input', issues: parsed.error.issues });
+          return;
+        }
+
+        const [row] = await db
+          .insert(prospectorMissedJob)
+          .values({
+            userId,
+            url: parsed.data.url,
+            title: parsed.data.title ?? null,
+            foundVia: parsed.data.foundVia ?? null,
+            note: parsed.data.note ?? null,
+          })
+          .returning({ id: prospectorMissedJob.id });
+
+        await req.audit('prospector.missed_job.report', {
+          id: row?.id,
+          url: parsed.data.url,
+        });
+        return { ok: true as const, id: row?.id };
+      },
+    );
+
+    /**
+     * POST /api/modules/prospector/missed-jobs/:id/resolve
+     * Mark a reported-missed job handled (or reopen it).
+     */
+    app.post(
+      '/missed-jobs/:id/resolve',
+      { preHandler: requireUser },
+      async (req: FastifyRequest, reply: FastifyReply) => {
+        const { id } = req.params as { id: string };
+        const parsed = MissedJobResolveRequest.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          reply.code(400).send({ error: 'invalid_input', issues: parsed.error.issues });
+          return;
+        }
+
+        const [row] = await db
+          .update(prospectorMissedJob)
+          .set({ status: parsed.data.status, updatedAt: new Date() })
+          .where(eq(prospectorMissedJob.id, id))
+          .returning({ id: prospectorMissedJob.id });
+
+        if (!row) {
+          reply.code(404).send({ error: 'not_found' });
+          return;
+        }
+
+        await req.audit('prospector.missed_job.resolve', { id, status: parsed.data.status });
+        return { ok: true as const };
+      },
+    );
+
     ctx.logger.info(
       { minDashboardScore: ctx.settings.minDashboardScore, newSectionSize: ctx.settings.newSectionSize },
       'module-prospector routes ready',
@@ -552,7 +661,7 @@ export default defineModule({
   },
 });
 
-export { prospectorBidFeedback, bidWatcherSeen } from './schema.js';
+export { prospectorBidFeedback, bidWatcherSeen, prospectorMissedJob } from './schema.js';
 
 // ---------------------------------------------------------------------------
 // Service layer — call these from agents/modules instead of querying tables

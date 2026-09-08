@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type { ModuleUiPage } from '@frontrangesystems/business-os-module-sdk';
 
 /**
@@ -84,6 +84,40 @@ async function postFeedback(
       }),
     },
   );
+}
+
+interface MissedJob {
+  id: string;
+  url: string;
+  title: string | null;
+  foundVia: string | null;
+  note: string | null;
+  status: string;
+  createdAt: string;
+}
+
+async function fetchMissedJobs(): Promise<MissedJob[]> {
+  const r = await fetchJson<{ missedJobs: MissedJob[] }>('/api/modules/prospector/missed-jobs');
+  return r.missedJobs;
+}
+
+async function postMissedJob(input: {
+  url: string;
+  title?: string;
+  foundVia?: string;
+  note?: string;
+}): Promise<void> {
+  await fetchJson('/api/modules/prospector/missed-jobs', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+async function resolveMissedJob(id: string): Promise<void> {
+  await fetchJson(`/api/modules/prospector/missed-jobs/${encodeURIComponent(id)}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ status: 'resolved' }),
+  });
 }
 
 function ScoreBadge({ value }: { value: number | null }): JSX.Element | null {
@@ -230,6 +264,179 @@ function Thumbs({
   );
 }
 
+/**
+ * "Report a job we missed" panel. Trevor finds jobs by hand that the crawler
+ * never surfaced; this is where he flags them ("this should have been
+ * included"). A collapsed button keeps Home uncluttered; open reports show as a
+ * short list with a "Mark handled" action so the queue can be cleared. The
+ * reports are coverage-gap signal for tuning which boards/agencies we crawl.
+ */
+function MissedJobsPanel(): JSX.Element {
+  const [jobs, setJobs] = useState<MissedJob[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState('');
+  const [title, setTitle] = useState('');
+  const [foundVia, setFoundVia] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+
+  const reload = async (): Promise<void> => {
+    try {
+      setJobs(await fetchMissedJobs());
+    } catch {
+      // non-fatal: the panel just shows no list
+    }
+  };
+
+  useEffect(() => {
+    void reload();
+  }, []);
+
+  const submit = async (e: FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (!url.trim()) {
+      setError('Paste the link to the job.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await postMissedJob({
+        url: url.trim(),
+        title: title.trim() || undefined,
+        foundVia: foundVia.trim() || undefined,
+        note: note.trim() || undefined,
+      });
+      setUrl('');
+      setTitle('');
+      setFoundVia('');
+      setNote('');
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 3000);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save — check the link is a full URL.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const markHandled = async (id: string): Promise<void> => {
+    setJobs((prev) => (prev ? prev.filter((j) => j.id !== id) : prev));
+    try {
+      await resolveMissedJob(id);
+    } catch {
+      void reload(); // put it back if the call failed
+    }
+  };
+
+  const openCount = jobs?.length ?? 0;
+
+  return (
+    <section className="card mb-8 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-base font-semibold">Missed a job?</h2>
+          <p className="text-xs text-ink-500">
+            Found a bid the Prospector didn't surface? Flag it — it helps us fix what we're not
+            crawling.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="rounded-full border border-ink-200 px-3 py-1 text-sm text-ink-700 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+        >
+          {open ? 'Close' : '＋ Report a missed job'}
+        </button>
+      </div>
+
+      {open && (
+        <form onSubmit={submit} className="mt-4 grid gap-2 sm:max-w-xl">
+          <input
+            type="url"
+            required
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Link to the job posting (required)"
+            className="w-full rounded border border-ink-200 bg-white px-2.5 py-1.5 text-sm dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
+          />
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="What is it? (optional)"
+            className="w-full rounded border border-ink-200 bg-white px-2.5 py-1.5 text-sm dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
+          />
+          <input
+            type="text"
+            value={foundVia}
+            onChange={(e) => setFoundVia(e.target.value)}
+            placeholder="Where did you find it? e.g. Central Auction (optional)"
+            className="w-full rounded border border-ink-200 bg-white px-2.5 py-1.5 text-sm dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
+          />
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Anything else — why it should've been included (optional)"
+            rows={2}
+            className="w-full rounded border border-ink-200 bg-white px-2.5 py-1.5 text-sm dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
+          />
+          {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? 'Saving…' : 'Flag this job'}
+            </button>
+            {justSaved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Flagged — thanks.</span>}
+          </div>
+        </form>
+      )}
+
+      {openCount > 0 && (
+        <div className="mt-4 border-t border-ink-100 pt-3 dark:border-ink-800">
+          <div className="mb-2 text-xs font-medium text-ink-600 dark:text-ink-300">
+            Flagged as missed ({openCount})
+          </div>
+          <ul className="space-y-2">
+            {jobs!.map((j) => (
+              <li key={j.id} className="flex items-start justify-between gap-3 text-sm">
+                <div className="min-w-0 flex-1">
+                  <a
+                    href={j.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="break-words font-medium text-accent hover:underline"
+                  >
+                    {j.title || j.url}
+                  </a>
+                  <div className="text-xs text-ink-500">
+                    {[j.foundVia ? `via ${j.foundVia}` : null, j.note]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => markHandled(j.id)}
+                  className="shrink-0 rounded border border-ink-200 px-2 py-0.5 text-xs text-ink-600 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+                >
+                  Mark handled
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function ProspectorHomePage(): JSX.Element {
   const [sections, setSections] = useState<HomeSection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -281,6 +488,8 @@ export function ProspectorHomePage(): JSX.Element {
           {error}
         </div>
       )}
+
+      <MissedJobsPanel />
 
       {!sections ? (
         <div className="text-ink-500">Loading…</div>
