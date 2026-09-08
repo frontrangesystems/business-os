@@ -30,6 +30,35 @@ export const prospectorBidFeedback = pgTable(
 );
 
 /**
+ * Module-owned. A job the operator says the Prospector *should* have
+ * surfaced but didn't ("this should have been included"). One row per
+ * report. These are raw coverage-gap signal — which boards / agencies the
+ * crawler is missing — not scored bids, so they live in their own table and
+ * never join `bid_watcher_seen`.
+ */
+export const prospectorMissedJob = pgTable(
+  'prospector_missed_job',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull(),
+    // The job posting the operator found manually. Required — it's the whole point.
+    url: text('url').notNull(),
+    title: text('title'),
+    // Where they found it (free text: "Central Auction", "word of mouth", …).
+    // Not a bid_watcher source key.
+    foundVia: text('found_via'),
+    note: text('note'),
+    // 'open' = still needs a look; 'resolved' = an operator has triaged it.
+    status: text('status').notNull().default('open'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    statusIdx: index('prospector_missed_job_status_idx').on(t.status, t.createdAt),
+  }),
+);
+
+/**
  * READ-ONLY view of the bid-watcher agent's table. The module reads bids
  * from here and exposes them as cards on /home. The agent owns writes
  * (see clients/c-and-m-construction-os/agents/bid-watcher/migrations/).
