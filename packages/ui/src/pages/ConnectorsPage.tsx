@@ -223,6 +223,7 @@ export function ConnectorsPage(): JSX.Element {
                       authKind={provider?.authKind ?? 'none'}
                       externalOAuth={provider?.externalOAuth}
                       settingsSchema={provider?.settingsSchema as FieldSchema | undefined}
+                      credentialsSchema={provider?.credentialsSchema as FieldSchema | undefined}
                       onActivate={() => activate(inst.id)}
                       onDeactivate={() => deactivate(inst.id)}
                       onSetCreds={(c) => setCreds(inst.id, c)}
@@ -532,6 +533,7 @@ function InstanceCard(props: {
   authKind: 'oauth2' | 'api-key' | 'none' | 'custom';
   externalOAuth?: { provider: 'composio'; toolkit: string };
   settingsSchema?: FieldSchema;
+  credentialsSchema?: FieldSchema;
   onActivate: () => Promise<void>;
   onDeactivate: () => Promise<void>;
   onSetCreds: (creds: unknown) => Promise<void>;
@@ -554,6 +556,29 @@ function InstanceCard(props: {
   );
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Custom (username/password/etc.) credential editing. Unlike api-key, these
+  // connectors previously had NO in-place edit path — the only way to change a
+  // password was to delete and re-add the instance. This form lets an operator
+  // update the saved credentials in place (they re-enter the fields; we never
+  // echo the stored secret back). Save runs the same auto-test as first setup.
+  const hasCredSchema =
+    props.credentialsSchema &&
+    props.credentialsSchema.type === 'object' &&
+    Object.keys((props.credentialsSchema as { fields: object }).fields).length > 0;
+  const [editingCreds, setEditingCreds] = useState(false);
+  const [draftCreds, setDraftCreds] = useState<Record<string, unknown>>(() =>
+    props.credentialsSchema ? (defaultFor(props.credentialsSchema) as Record<string, unknown>) : {},
+  );
+  const [credSaveState, setCredSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const draftCredsFilled =
+    !hasCredSchema ||
+    (props.credentialsSchema?.type === 'object' &&
+      Object.entries(props.credentialsSchema.fields).every(([k, f]) => {
+        const isOptional = (f as { optional?: boolean }).optional;
+        const v = draftCreds[k];
+        return isOptional || (typeof v === 'string' ? v.length > 0 : v != null);
+      }));
 
   const hasSettingsSchema =
     props.settingsSchema &&
@@ -710,6 +735,25 @@ function InstanceCard(props: {
               {credsError && <div className="mt-1 text-xs text-bad">{credsError}</div>}
             </div>
           )}
+          {props.authKind === 'custom' && hasCredSchema && (
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setEditingCreds((v) => !v);
+                setCredSaveState('idle');
+                setCredsError(null);
+                // Start from a blank/default form each time — we can't (and
+                // shouldn't) prefill the stored secret.
+                setDraftCreds(
+                  props.credentialsSchema
+                    ? (defaultFor(props.credentialsSchema) as Record<string, unknown>)
+                    : {},
+                );
+              }}
+            >
+              {props.instance.hasCredentials ? 'Update credentials' : 'Set credentials'}
+            </button>
+          )}
           {hasSettingsSchema && (
             <button
               className="btn-ghost"
@@ -781,6 +825,63 @@ function InstanceCard(props: {
               {settingsSaveState === 'saving' ? 'Saving…' : 'Save settings'}
             </button>
             {settingsSaveState === 'ok' && <span className="text-xs text-ok">Saved.</span>}
+          </div>
+        </div>
+      )}
+      {/* update-credentials section (custom auth: username/password/etc.) */}
+      {editingCreds && props.authKind === 'custom' && hasCredSchema && props.credentialsSchema && (
+        <div className="divider mt-4 pt-4">
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-500 dark:text-ink-400">
+            Update credentials
+          </h3>
+          <SchemaForm
+            schema={props.credentialsSchema}
+            value={draftCreds}
+            onChange={(v) => {
+              setDraftCreds((v ?? {}) as Record<string, unknown>);
+              setCredSaveState('idle');
+              setCredsError(null);
+            }}
+            noAutofill
+          />
+          {credsError && (
+            <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">
+              {credsError}
+            </div>
+          )}
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              className="btn-primary"
+              disabled={credSaveState === 'saving' || !draftCredsFilled}
+              onClick={async () => {
+                setCredSaveState('saving');
+                setCredsError(null);
+                try {
+                  await props.onSetCreds({ kind: 'custom', values: draftCreds });
+                  setCredSaveState('idle');
+                  setEditingCreds(false);
+                } catch (e: unknown) {
+                  // PUT /credentials auto-tests server-side; a verify_failed
+                  // returns 400 with the provider's real message.
+                  setCredSaveState('error');
+                  setCredsError(apiErrorMessage(e, 'Save failed — check the details and try again.'));
+                }
+              }}
+            >
+              {credSaveState === 'saving' ? 'Testing…' : 'Save & test'}
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setEditingCreds(false);
+                setCredsError(null);
+              }}
+            >
+              Cancel
+            </button>
+            <span className="text-xs text-ink-500 dark:text-ink-400">
+              We test the connection before saving — nothing changes if it fails.
+            </span>
           </div>
         </div>
       )}
