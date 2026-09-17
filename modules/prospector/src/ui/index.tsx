@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { ModuleUiPage } from '@frontrangesystems/business-os-module-sdk';
 
 /**
@@ -118,6 +118,174 @@ async function resolveMissedJob(id: string): Promise<void> {
     method: 'POST',
     body: JSON.stringify({ status: 'resolved' }),
   });
+}
+
+// --- Generic per-bid document action ---------------------------------------
+// Config comes from the /home and /bids responses (driven by module settings).
+// When present, each bid gets a button that POSTs {source, externalId} to the
+// trigger endpoint; a batch poll of the status endpoint drives the badge. All
+// source-specific behavior lives behind those endpoints in the install's own
+// module — this UI just renders whatever state/label the status endpoint returns.
+interface DocActionConfig {
+  label: string;
+  triggerPath: string;
+  statusPath: string;
+}
+
+type PullState = 'none' | 'working' | 'done' | 'failed';
+
+interface PullStatus {
+  state: PullState;
+  label: string;
+  count?: number;
+  href?: string;
+}
+
+type BidRef = { source: string; externalId: string };
+
+function bidKey(source: string, externalId: string): string {
+  return `${source}::${externalId}`;
+}
+
+async function fetchPullStatuses(
+  statusPath: string,
+  bids: BidRef[],
+): Promise<Record<string, PullStatus>> {
+  if (bids.length === 0) return {};
+  const r = await fetchJson<{ statuses?: Record<string, PullStatus> }>(statusPath, {
+    method: 'POST',
+    body: JSON.stringify({ bids: bids.map((b) => ({ source: b.source, externalId: b.externalId })) }),
+  });
+  return r.statuses ?? {};
+}
+
+/**
+ * Batch-load + poll pull statuses for the visible bids, and expose a `trigger`
+ * that kicks a pull off and flips that bid to "working". One batch request per
+ * page (not one per bid) keeps the All Bids list cheap; polling only continues
+ * while at least one bid is still working.
+ */
+function usePullStatuses(
+  docAction: DocActionConfig | null,
+  bids: BidRef[] | null,
+): { statuses: Record<string, PullStatus>; trigger: (source: string, externalId: string) => void } {
+  const [statuses, setStatuses] = useState<Record<string, PullStatus>>({});
+  // Only refire the batch fetch when the actual set of bids changes.
+  const keys = bids ? bids.map((b) => bidKey(b.source, b.externalId)).join(',') : '';
+
+  const refresh = useCallback(async (): Promise<void> => {
+    if (!docAction || !bids || bids.length === 0) return;
+    try {
+      const map = await fetchPullStatuses(docAction.statusPath, bids);
+      setStatuses((prev) => ({ ...prev, ...map }));
+    } catch {
+      // non-fatal: badges keep their last known state
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docAction, keys]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // Keep polling while any bid is mid-pull.
+  useEffect(() => {
+    if (!docAction) return;
+    const working = Object.values(statuses).some((s) => s.state === 'working');
+    if (!working) return;
+    const t = setTimeout(() => void refresh(), 4000);
+    return () => clearTimeout(t);
+  }, [statuses, docAction, refresh]);
+
+  const trigger = useCallback(
+    (source: string, externalId: string): void => {
+      if (!docAction) return;
+      const k = bidKey(source, externalId);
+      setStatuses((prev) => ({ ...prev, [k]: { state: 'working', label: 'Starting…' } }));
+      void (async () => {
+        try {
+          await fetchJson(docAction.triggerPath, {
+            method: 'POST',
+            body: JSON.stringify({ source, externalId }),
+          });
+          void refresh();
+        } catch {
+          setStatuses((prev) => ({ ...prev, [k]: { state: 'failed', label: 'Failed to start' } }));
+        }
+      })();
+    },
+    [docAction, refresh],
+  );
+
+  return { statuses, trigger };
+}
+
+/**
+ * The per-bid action control: a button when there's nothing pulled yet (or a
+ * retry after failure), a muted "working" chip while it runs, and a linked
+ * success chip once done. Renders nothing unless the install configured the
+ * action, so Prospector shows no button it can't drive.
+ */
+function PullDocsControl({
+  source,
+  externalId,
+  docAction,
+  status,
+  onTrigger,
+}: {
+  source: string;
+  externalId: string;
+  docAction: DocActionConfig | null;
+  status: PullStatus | undefined;
+  onTrigger: (source: string, externalId: string) => void;
+}): JSX.Element | null {
+  if (!docAction) return null;
+  const state = status?.state ?? 'none';
+
+  if (state === 'working') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100">
+        <span className="animate-pulse">⏳</span>
+        <span className="whitespace-nowrap">{status?.label ?? 'Working…'}</span>
+      </span>
+    );
+  }
+
+  if (state === 'done') {
+    const body = (
+      <>
+        <span aria-hidden>✓</span>
+        <span className="whitespace-nowrap">{status?.label ?? docAction.label}</span>
+      </>
+    );
+    const cls =
+      'inline-flex items-center gap-1.5 rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-100';
+    return status?.href ? (
+      <a href={status.href} className={`${cls} hover:underline`}>
+        {body}
+      </a>
+    ) : (
+      <span className={cls}>{body}</span>
+    );
+  }
+
+  // 'none' | 'failed' → an actionable button.
+  const failed = state === 'failed';
+  return (
+    <button
+      type="button"
+      onClick={() => onTrigger(source, externalId)}
+      title={failed ? 'Retry the document pull' : `${docAction.label} for this bid`}
+      className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs transition ${
+        failed
+          ? 'border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/30'
+          : 'border-ink-200 text-ink-700 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800'
+      }`}
+    >
+      <span aria-hidden>{failed ? '↻' : '⬇'}</span>
+      <span className="whitespace-nowrap">{failed ? status?.label ?? 'Retry' : docAction.label}</span>
+    </button>
+  );
 }
 
 function ScoreBadge({ value }: { value: number | null }): JSX.Element | null {
@@ -445,18 +613,30 @@ export function ProspectorHomePage(): JSX.Element {
   // and get caught early.
   const [sort, setSort] = useState<SortKey>('score');
   const [reasons, setReasons] = useState<ReasonOptions>(EMPTY_REASONS);
+  const [docAction, setDocAction] = useState<DocActionConfig | null>(null);
 
   const reload = async (): Promise<void> => {
     try {
-      const r = await fetchJson<{ sections: HomeSection[]; reasonOptions?: ReasonOptions }>(
-        `/api/modules/prospector/home?sort=${sort}`,
-      );
+      const r = await fetchJson<{
+        sections: HomeSection[];
+        reasonOptions?: ReasonOptions;
+        docAction?: DocActionConfig | null;
+      }>(`/api/modules/prospector/home?sort=${sort}`);
       setSections(r.sections);
       if (r.reasonOptions) setReasons(r.reasonOptions);
+      setDocAction(r.docAction ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'load failed');
     }
   };
+
+  const allCards: BidRef[] = sections
+    ? sections.flatMap((s) => s.cards.map((c) => ({ source: c.source, externalId: c.externalId })))
+    : [];
+  const { statuses: pullStatuses, trigger: pullTrigger } = usePullStatuses(
+    docAction,
+    sections ? allCards : null,
+  );
 
   useEffect(() => {
     setSections(null);
@@ -552,13 +732,22 @@ export function ProspectorHomePage(): JSX.Element {
                           </div>
                         )}
                       </div>
-                      <Thumbs
-                        source={card.source}
-                        externalId={card.externalId}
-                        current={card.myRating}
-                        reasons={reasons}
-                        onChange={(rating) => updateRating(card.id, rating)}
-                      />
+                      <div className="flex flex-col items-end gap-2">
+                        <Thumbs
+                          source={card.source}
+                          externalId={card.externalId}
+                          current={card.myRating}
+                          reasons={reasons}
+                          onChange={(rating) => updateRating(card.id, rating)}
+                        />
+                        <PullDocsControl
+                          source={card.source}
+                          externalId={card.externalId}
+                          docAction={docAction}
+                          status={pullStatuses[bidKey(card.source, card.externalId)]}
+                          onTrigger={pullTrigger}
+                        />
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -600,19 +789,26 @@ export function ProspectorBidsPage(): JSX.Element {
   const [sort, setSort] = useState<SortKey>('score');
   const [minScore, setMinScore] = useState<number | null>(null);
   const [reasons, setReasons] = useState<ReasonOptions>(EMPTY_REASONS);
+  const [docAction, setDocAction] = useState<DocActionConfig | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setBids(null);
     void (async () => {
       try {
-        const r = await fetchJson<{ bids: BidRow[]; minScore: number; reasonOptions?: ReasonOptions }>(
+        const r = await fetchJson<{
+          bids: BidRow[];
+          minScore: number;
+          reasonOptions?: ReasonOptions;
+          docAction?: DocActionConfig | null;
+        }>(
           `/api/modules/prospector/bids?limit=100&filter=${filter}${recommendedOnly ? '&recommended=1' : ''}&sort=${sort}`,
         );
         if (!cancelled) {
           setBids(r.bids);
           setMinScore(r.minScore);
           if (r.reasonOptions) setReasons(r.reasonOptions);
+          setDocAction(r.docAction ?? null);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'load failed');
@@ -622,6 +818,11 @@ export function ProspectorBidsPage(): JSX.Element {
       cancelled = true;
     };
   }, [filter, recommendedOnly, sort]);
+
+  const { statuses: pullStatuses, trigger: pullTrigger } = usePullStatuses(
+    docAction,
+    bids ? bids.map((b) => ({ source: b.source, externalId: b.externalId })) : null,
+  );
 
   const updateRating = (source: string, externalId: string, rating: 1 | -1): void => {
     setBids((prev) =>
@@ -720,6 +921,7 @@ export function ProspectorBidsPage(): JSX.Element {
                 <th className="px-3 py-2">Value</th>
                 <th className="px-3 py-2">Due</th>
                 <th className="px-3 py-2">Status</th>
+                {docAction && <th className="px-3 py-2">Docs</th>}
                 <th className="px-3 py-2">Rate</th>
               </tr>
             </thead>
@@ -748,6 +950,17 @@ export function ProspectorBidsPage(): JSX.Element {
                   <td className="px-3 py-2">
                     <span className="rounded bg-ink-100 px-2 py-0.5 text-xs dark:bg-ink-800">{b.status}</span>
                   </td>
+                  {docAction && (
+                    <td className="px-3 py-2">
+                      <PullDocsControl
+                        source={b.source}
+                        externalId={b.externalId}
+                        docAction={docAction}
+                        status={pullStatuses[bidKey(b.source, b.externalId)]}
+                        onTrigger={pullTrigger}
+                      />
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     <Thumbs
                       source={b.source}
