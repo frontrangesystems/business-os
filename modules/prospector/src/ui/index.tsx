@@ -255,7 +255,11 @@ function PullDocsControl({
     // make the badge a link so the operator can jump into the project and watch
     // it build — same affordance as the finished "Indexed" badge.
     return status?.href ? (
-      <a href={status.href} className={`${workingCls} hover:underline`} title="Open the project (still indexing)">
+      <a
+        href={status.href}
+        className={`${workingCls} transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/50`}
+        title="Open the project (still indexing)"
+      >
         {workingBody}
       </a>
     ) : (
@@ -273,7 +277,10 @@ function PullDocsControl({
     const cls =
       'inline-flex items-center gap-1.5 rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-100';
     return status?.href ? (
-      <a href={status.href} className={`${cls} hover:underline`}>
+      <a
+        href={status.href}
+        className={`${cls} transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-900/50`}
+      >
         {body}
       </a>
     ) : (
