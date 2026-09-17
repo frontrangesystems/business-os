@@ -98,8 +98,61 @@ const SettingsSchema = z.object({
     .describe(
       'Reasons offered when an operator marks a bid "More like this" (👍), one per line. Edit to match what makes a job a strong fit for your shop — these teach the AI what to surface more of.',
     ),
+  // --- Optional "bid document action" (generic, config-driven) ---------------
+  // Lets an install wire a per-bid action button (e.g. "Pull documents") onto
+  // every bid, driven entirely by config so Prospector stays business-agnostic.
+  // When enabled, Prospector renders the button and a live status badge, POSTing
+  // {source, externalId} to the trigger endpoint and batch-polling the status
+  // endpoint. The endpoints — and all the source-specific fetching behind them —
+  // live in the install's own module (for C&M, the bid-indexer's document pull).
+  docActionEnabled: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Show a per-bid action button (e.g. "Pull documents") on Home cards and the All Bids list. Requires the trigger + status endpoints below. Off by default.',
+    ),
+  docActionLabel: z
+    .string()
+    .max(60)
+    .default('Pull documents')
+    .describe('Button label for the per-bid document action. Default "Pull documents".'),
+  docActionTriggerPath: z
+    .string()
+    .max(300)
+    .default('')
+    .describe(
+      'POST endpoint that starts the action for one bid. Receives JSON {source, externalId}. Example: /api/modules/bid-indexer/pull-bid-docs',
+    ),
+  docActionStatusPath: z
+    .string()
+    .max(300)
+    .default('')
+    .describe(
+      'POST endpoint returning the action status for a set of bids. Receives {bids:[{source,externalId}]} and returns {statuses:{"source::externalId":{state,label,count?,href?}}}. Example: /api/modules/bid-indexer/pull-status-batch',
+    ),
 });
 type Settings = z.infer<typeof SettingsSchema>;
+
+/**
+ * The generic per-bid document action, resolved from settings. Null unless the
+ * install both enabled it and configured both endpoints — so Prospector never
+ * renders a button it can't drive. The shape is deliberately minimal: a label
+ * plus two endpoint paths. All source-specific behavior lives behind those
+ * endpoints in the install's own module, keeping this module business-agnostic.
+ */
+export interface DocActionConfig {
+  label: string;
+  triggerPath: string;
+  statusPath: string;
+}
+
+function docActionConfig(s: Settings): DocActionConfig | null {
+  if (!s.docActionEnabled) return null;
+  const triggerPath = s.docActionTriggerPath.trim();
+  const statusPath = s.docActionStatusPath.trim();
+  if (!triggerPath || !statusPath) return null;
+  return { label: s.docActionLabel.trim() || 'Pull documents', triggerPath, statusPath };
+}
 
 const FeedbackRequest = z.object({
   rating: z.union([z.literal(1), z.literal(-1)]),
@@ -232,6 +285,7 @@ export default defineModule({
             fit: parseReasonList(ctx.settings.fitReasons),
             pass: parseReasonList(ctx.settings.passReasons),
           },
+          docAction: docActionConfig(ctx.settings),
           bids: rows.map((r) => ({
             ...r,
             estimatedValue: r.estimatedValue !== null ? Number(r.estimatedValue) : null,
@@ -348,6 +402,7 @@ export default defineModule({
             fit: parseReasonList(ctx.settings.fitReasons),
             pass: parseReasonList(ctx.settings.passReasons),
           },
+          docAction: docActionConfig(ctx.settings),
           sections: [
             {
               id: 'new-bids',
