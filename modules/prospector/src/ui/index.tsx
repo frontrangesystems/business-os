@@ -243,11 +243,23 @@ function PullDocsControl({
   const state = status?.state ?? 'none';
 
   if (state === 'working') {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100">
+    const workingCls =
+      'inline-flex items-center gap-1.5 rounded border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100';
+    const workingBody = (
+      <>
         <span className="animate-pulse">⏳</span>
         <span className="whitespace-nowrap">{status?.label ?? 'Working…'}</span>
-      </span>
+      </>
+    );
+    // Once a project exists (status carries its href, i.e. indexing has begun),
+    // make the badge a link so the operator can jump into the project and watch
+    // it build — same affordance as the finished "Indexed" badge.
+    return status?.href ? (
+      <a href={status.href} className={`${workingCls} hover:underline`} title="Open the project (still indexing)">
+        {workingBody}
+      </a>
+    ) : (
+      <span className={workingCls}>{workingBody}</span>
     );
   }
 
