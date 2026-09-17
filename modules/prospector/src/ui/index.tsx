@@ -147,6 +147,18 @@ function bidKey(source: string, externalId: string): string {
   return `${source}::${externalId}`;
 }
 
+// Friendly display label for a bid's source. Falls back to the raw slug so any
+// source the watcher emits still renders; the map is just cosmetic polish for
+// the sources an install actually uses.
+const SOURCE_LABELS: Record<string, string> = {
+  ladotd: 'LA DOTD',
+  centralbidding: 'Central Bidding',
+  nola: 'NOLA',
+};
+function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source] ?? source;
+}
+
 async function fetchPullStatuses(
   statusPath: string,
   bids: BidRef[],
@@ -951,13 +963,18 @@ export function ProspectorBidsPage(): JSX.Element {
                     <ScoreBadge value={b.score} />
                   </td>
                   <td className="px-3 py-2">
-                    {b.url ? (
-                      <a href={b.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
-                        {b.title ?? 'Untitled'}
-                      </a>
-                    ) : (
-                      b.title ?? 'Untitled'
-                    )}
+                    <div className="flex flex-col gap-1">
+                      {b.url ? (
+                        <a href={b.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                          {b.title ?? 'Untitled'}
+                        </a>
+                      ) : (
+                        <span>{b.title ?? 'Untitled'}</span>
+                      )}
+                      <span className="w-fit rounded bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-500 dark:bg-ink-800 dark:text-ink-400">
+                        {sourceLabel(b.source)}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-ink-600 dark:text-ink-400">{b.location ?? '—'}</td>
                   <td className="px-3 py-2 text-ink-600 dark:text-ink-400">
