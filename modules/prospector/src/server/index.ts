@@ -209,7 +209,11 @@ export default defineModule({
      *   ?sort=due                        due date, latest first (newest postings on
      *                                    top, so fresh opportunities are caught early);
      *                                    bids with no due date sort last
-     *   ?limit=<n>                       cap rows (default newSectionSize, max 100)
+     *   ?limit=<n>                       page size (default newSectionSize, max 100)
+     *   ?offset=<n>                      rows to skip, for paging (default 0)
+     *
+     * Response includes `total` — the full count of matching bids regardless of
+     * limit/offset — so the UI can page through every bid, not just the first page.
      */
     app.get(
       '/bids',
@@ -218,6 +222,7 @@ export default defineModule({
         const userId = req.user!.id;
         const q = req.query as {
           limit?: string;
+          offset?: string;
           status?: string;
           filter?: string;
           recommended?: string;
@@ -230,7 +235,8 @@ export default defineModule({
           sort === 'due'
             ? [sql`${bidWatcherSeen.bidsDueAt} DESC NULLS LAST`, desc(bidWatcherSeen.score)]
             : [desc(bidWatcherSeen.score), desc(bidWatcherSeen.firstSeenAt)];
-        const limit = Number(q.limit ?? ctx.settings.newSectionSize);
+        const limit = Math.min(Math.max(1, Number(q.limit ?? ctx.settings.newSectionSize) || 1), 100);
+        const offset = Math.max(0, Number(q.offset ?? 0) || 0);
         const status = q.status ?? null;
         const filter = q.filter ?? 'all';
         const recommendedOnly = q.recommended === '1' || q.recommended === 'true';
@@ -244,6 +250,26 @@ export default defineModule({
               : filter === 'not-reviewed'
                 ? sql`${prospectorBidFeedback.rating} IS NULL`
                 : sql`TRUE`;
+
+        const whereClause = and(
+          status ? eq(bidWatcherSeen.status, status) : sql`TRUE`,
+          ratingClause,
+          recommendedOnly ? gte(bidWatcherSeen.score, minScore) : sql`TRUE`,
+        );
+        // The rating filter lives on the joined feedback table, so the count has
+        // to use the same left join and where clause as the row query below.
+        const feedbackJoin = and(
+          eq(prospectorBidFeedback.source, bidWatcherSeen.source),
+          eq(prospectorBidFeedback.externalId, bidWatcherSeen.externalId),
+          eq(prospectorBidFeedback.userId, userId),
+        );
+
+        const countRows = await db
+          .select({ total: sql<number>`count(*)::int` })
+          .from(bidWatcherSeen)
+          .leftJoin(prospectorBidFeedback, feedbackJoin)
+          .where(whereClause);
+        const total = countRows[0]?.total ?? 0;
 
         const rows = await db
           .select({
@@ -263,23 +289,16 @@ export default defineModule({
             myRating: prospectorBidFeedback.rating,
           })
           .from(bidWatcherSeen)
-          .leftJoin(
-            prospectorBidFeedback,
-            and(
-              eq(prospectorBidFeedback.source, bidWatcherSeen.source),
-              eq(prospectorBidFeedback.externalId, bidWatcherSeen.externalId),
-              eq(prospectorBidFeedback.userId, userId),
-            ),
-          )
-          .where(and(
-            status ? eq(bidWatcherSeen.status, status) : sql`TRUE`,
-            ratingClause,
-            recommendedOnly ? gte(bidWatcherSeen.score, minScore) : sql`TRUE`,
-          ))
+          .leftJoin(prospectorBidFeedback, feedbackJoin)
+          .where(whereClause)
           .orderBy(...orderBy)
-          .limit(Math.min(limit, 100));
+          .limit(limit)
+          .offset(offset);
 
         return {
+          total,
+          limit,
+          offset,
           minScore,
           reasonOptions: {
             fit: parseReasonList(ctx.settings.fitReasons),
