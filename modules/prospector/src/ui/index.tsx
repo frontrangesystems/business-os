@@ -807,20 +807,41 @@ const SORT_OPTIONS: Array<{ id: SortKey; label: string }> = [
   { id: 'due', label: 'Due date (newest first)' },
 ];
 
+const PAGE_SIZE = 50;
+
 export function ProspectorBidsPage(): JSX.Element {
   const [bids, setBids] = useState<BidRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<BidFilter>('all');
+  const [filter, setFilterState] = useState<BidFilter>('all');
   // Default to the recommended set so the operator lands on bids worth rating,
   // one toggle away from the full list.
   const [recommendedOnly, setRecommendedOnly] = useState(true);
   // Sort order. 'score' = highest ranking first (default). 'due' = latest due
   // date first, so newly-posted bids (longest lead time) sit on top and get
   // caught early.
-  const [sort, setSort] = useState<SortKey>('score');
+  const [sort, setSortState] = useState<SortKey>('score');
   const [minScore, setMinScore] = useState<number | null>(null);
   const [reasons, setReasons] = useState<ReasonOptions>(EMPTY_REASONS);
   const [docAction, setDocAction] = useState<DocActionConfig | null>(null);
+  // Paging. `page` is 0-based; `total` is the full count of matching bids so we
+  // can page through every one of them, not just the first PAGE_SIZE.
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+
+  // Changing any filter/sort control jumps back to the first page — otherwise
+  // you could be stranded on a page that no longer exists under the new filter.
+  const setFilter = (f: BidFilter): void => {
+    setFilterState(f);
+    setPage(0);
+  };
+  const setSort = (s: SortKey): void => {
+    setSortState(s);
+    setPage(0);
+  };
+  const toggleRecommended = (): void => {
+    setRecommendedOnly((v) => !v);
+    setPage(0);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -829,14 +850,16 @@ export function ProspectorBidsPage(): JSX.Element {
       try {
         const r = await fetchJson<{
           bids: BidRow[];
+          total: number;
           minScore: number;
           reasonOptions?: ReasonOptions;
           docAction?: DocActionConfig | null;
         }>(
-          `/api/modules/prospector/bids?limit=100&filter=${filter}${recommendedOnly ? '&recommended=1' : ''}&sort=${sort}`,
+          `/api/modules/prospector/bids?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&filter=${filter}${recommendedOnly ? '&recommended=1' : ''}&sort=${sort}`,
         );
         if (!cancelled) {
           setBids(r.bids);
+          setTotal(r.total);
           setMinScore(r.minScore);
           if (r.reasonOptions) setReasons(r.reasonOptions);
           setDocAction(r.docAction ?? null);
@@ -848,7 +871,7 @@ export function ProspectorBidsPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [filter, recommendedOnly, sort]);
+  }, [filter, recommendedOnly, sort, page]);
 
   const { statuses: pullStatuses, trigger: pullTrigger } = usePullStatuses(
     docAction,
@@ -896,7 +919,7 @@ export function ProspectorBidsPage(): JSX.Element {
         <span className="mx-1 h-5 w-px bg-ink-200 dark:bg-ink-700" aria-hidden />
         <button
           type="button"
-          onClick={() => setRecommendedOnly((v) => !v)}
+          onClick={toggleRecommended}
           aria-pressed={recommendedOnly}
           className={`rounded-full border px-3 py-1 text-sm transition ${
             recommendedOnly
@@ -1010,6 +1033,35 @@ export function ProspectorBidsPage(): JSX.Element {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {bids && total > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-ink-600 dark:text-ink-400">
+          <span>
+            Showing {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + bids.length} of {total}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="rounded-full border border-ink-200 px-3 py-1 transition hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-ink-700 dark:hover:bg-ink-800"
+            >
+              ← Prev
+            </button>
+            <span className="tabular-nums">
+              Page {page + 1} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={(page + 1) * PAGE_SIZE >= total}
+              className="rounded-full border border-ink-200 px-3 py-1 transition hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-ink-700 dark:hover:bg-ink-800"
+            >
+              Next →
+            </button>
+          </div>
         </div>
       )}
     </div>
