@@ -5,8 +5,11 @@ import type { ModuleUiPage } from '@frontrangesystems/business-os-module-sdk';
  * UI half of @frontrangesystems/business-os-module-prospector.
  *
  * Two pages:
- *   - Home (path: ''): dashboard with "New bids worth a look" cards + thumbs feedback.
- *   - Bids (path: 'bids'): full table including triaged / pursuing / won / lost.
+ *   - All bids (path: ''): the module landing — full, paged table of every job
+ *     the watcher has surfaced (defaults to showing all, ★ toggle narrows to
+ *     recommended). Includes triaged / pursuing / won / lost.
+ *   - Highlights (path: 'highlights'): curated "New bids worth a look" cards +
+ *     thumbs feedback — today's picks at a glance.
  */
 
 interface HomeCard {
@@ -813,9 +816,10 @@ export function ProspectorBidsPage(): JSX.Element {
   const [bids, setBids] = useState<BidRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilterState] = useState<BidFilter>('all');
-  // Default to the recommended set so the operator lands on bids worth rating,
-  // one toggle away from the full list.
-  const [recommendedOnly, setRecommendedOnly] = useState(true);
+  // Default to showing every bid — this is the module landing, so operators
+  // expect the full list. The ★ Recommended-only toggle narrows it to bids
+  // worth rating (score ≥ threshold).
+  const [recommendedOnly, setRecommendedOnly] = useState(false);
   // Sort order. 'score' = highest ranking first (default). 'due' = latest due
   // date first, so newly-posted bids (longest lead time) sit on top and get
   // caught early.
@@ -1069,6 +1073,9 @@ export function ProspectorBidsPage(): JSX.Element {
 }
 
 export const uiPages: ModuleUiPage[] = [
-  { path: '', navLabel: 'Home', Component: ProspectorHomePage },
-  { path: 'bids', navLabel: 'All bids', Component: ProspectorBidsPage },
+  // The module landing is the full, paged bid list — operators who open
+  // /modules/prospector expect every job here, not a curated snapshot.
+  { path: '', navLabel: 'All bids', Component: ProspectorBidsPage },
+  // The curated "today's picks" dashboard stays available one click away.
+  { path: 'highlights', navLabel: 'Highlights', Component: ProspectorHomePage },
 ];
