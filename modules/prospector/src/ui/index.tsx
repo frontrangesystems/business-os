@@ -89,6 +89,38 @@ async function postFeedback(
   );
 }
 
+/** Pipeline statuses an operator can set (must match the server's enum). */
+const PIPELINE_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'new', label: 'New' },
+  { value: 'pursuing', label: 'Pursuing' },
+  { value: 'submitted', label: 'Submitted' },
+  { value: 'passing', label: 'Passing' },
+  { value: 'won', label: 'Won' },
+  { value: 'lost', label: 'Lost' },
+];
+
+/** Set a bid's pipeline status. */
+async function postStatus(source: string, externalId: string, status: string): Promise<void> {
+  await fetchJson(
+    `/api/modules/prospector/bids/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}/status`,
+    { method: 'POST', body: JSON.stringify({ status }) },
+  );
+}
+
+/** Funnel + win-rate shape from GET /pipeline. */
+interface PipelineStats {
+  byStatus: Record<string, number>;
+  funnel: {
+    found: number;
+    reviewed: number;
+    pursuing: number;
+    submitted: number;
+    won: number;
+    lost: number;
+  };
+  winRate: number | null;
+}
+
 interface MissedJob {
   id: string;
   url: string;
@@ -812,6 +844,135 @@ const SORT_OPTIONS: Array<{ id: SortKey; label: string }> = [
 
 const PAGE_SIZE = 50;
 
+/** One stat tile in the pipeline panel. */
+function PipelineTile({ label, value, accent }: { label: string; value: string; accent?: boolean }): JSX.Element {
+  return (
+    <div
+      className={`min-w-[88px] rounded border px-3 py-2 ${
+        accent
+          ? 'border-accent/40 bg-accent/10'
+          : 'border-ink-100 bg-ink-50 dark:border-ink-800 dark:bg-ink-900'
+      }`}
+    >
+      <div className="text-[11px] uppercase tracking-wide text-ink-500">{label}</div>
+      <div className={`text-lg font-semibold tabular-nums ${accent ? 'text-accent' : ''}`}>{value}</div>
+    </div>
+  );
+}
+
+/**
+ * Pipeline panel (Phase 2 item 6): the funnel (found → reviewed → pursuing →
+ * submitted → won/lost) + win rate, filterable by found-date range and a
+ * location substring. Debounced refetch as the filters change.
+ */
+function PipelinePanel(): JSX.Element {
+  const [stats, setStats] = useState<PipelineStats | null>(null);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [location, setLocation] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void (async () => {
+        const params = new URLSearchParams();
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+        if (location.trim()) params.set('location', location.trim());
+        try {
+          const r = await fetchJson<PipelineStats>(
+            `/api/modules/prospector/pipeline${params.toString() ? `?${params}` : ''}`,
+          );
+          if (!cancelled) {
+            setStats(r);
+            setErr(null);
+          }
+        } catch (e) {
+          if (!cancelled) setErr(e instanceof Error ? e.message : 'load failed');
+        }
+      })();
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [from, to, location]);
+
+  const f = stats?.funnel;
+  const winRate = stats?.winRate;
+
+  return (
+    <div className="card mb-6 p-4">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <h2 className="text-sm font-semibold">Pipeline</h2>
+        <div className="flex flex-wrap items-end gap-3 text-xs text-ink-600 dark:text-ink-400">
+          <label className="flex flex-col gap-1">
+            Found from
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="rounded border border-ink-200 bg-white px-2 py-1 dark:border-ink-700 dark:bg-ink-900"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            to
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="rounded border border-ink-200 bg-white px-2 py-1 dark:border-ink-700 dark:bg-ink-900"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            Location
+            <input
+              type="text"
+              value={location}
+              placeholder="e.g. Baton Rouge"
+              onChange={(e) => setLocation(e.target.value)}
+              className="rounded border border-ink-200 bg-white px-2 py-1 dark:border-ink-700 dark:bg-ink-900"
+            />
+          </label>
+          {(from || to || location) && (
+            <button
+              type="button"
+              onClick={() => {
+                setFrom('');
+                setTo('');
+                setLocation('');
+              }}
+              className="rounded border border-ink-200 px-2 py-1 hover:bg-ink-50 dark:border-ink-700 dark:hover:bg-ink-800"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+      {err ? (
+        <div className="text-sm text-red-700 dark:text-red-300">{err}</div>
+      ) : !f ? (
+        <div className="text-sm text-ink-500">Loading…</div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <PipelineTile label="Found" value={String(f.found)} />
+          <PipelineTile label="Reviewed" value={String(f.reviewed)} />
+          <PipelineTile label="Pursuing" value={String(f.pursuing)} />
+          <PipelineTile label="Submitted" value={String(f.submitted)} />
+          <PipelineTile label="Won" value={String(f.won)} />
+          <PipelineTile label="Lost" value={String(f.lost)} />
+          <PipelineTile
+            label="Win rate"
+            value={winRate != null ? `${Math.round(winRate * 100)}%` : '—'}
+            accent
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProspectorBidsPage(): JSX.Element {
   const [bids, setBids] = useState<BidRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -892,6 +1053,35 @@ export function ProspectorBidsPage(): JSX.Element {
     );
   };
 
+  // Optimistically set a bid's pipeline status, then persist; revert on failure.
+  const setStatus = (source: string, externalId: string, status: string): void => {
+    let prevStatus: string | undefined;
+    setBids((prev) =>
+      prev
+        ? prev.map((b) => {
+            if (b.source === source && b.externalId === externalId) {
+              prevStatus = b.status;
+              return { ...b, status };
+            }
+            return b;
+          })
+        : prev,
+    );
+    void postStatus(source, externalId, status).catch((e) => {
+      setError(e instanceof Error ? e.message : 'status update failed');
+      // Revert on failure.
+      setBids((prev) =>
+        prev
+          ? prev.map((b) =>
+              b.source === source && b.externalId === externalId && prevStatus !== undefined
+                ? { ...b, status: prevStatus }
+                : b,
+            )
+          : prev,
+      );
+    });
+  };
+
   return (
     <div className="p-8">
       <header className="mb-6">
@@ -904,6 +1094,8 @@ export function ProspectorBidsPage(): JSX.Element {
           . Thumb each one 👍/👎 — your calls tune future scoring.
         </p>
       </header>
+
+      <PipelinePanel />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {FILTER_OPTIONS.map((opt) => (
@@ -1011,7 +1203,18 @@ export function ProspectorBidsPage(): JSX.Element {
                     {b.bidsDueAt ? new Date(b.bidsDueAt).toLocaleDateString() : '—'}
                   </td>
                   <td className="px-3 py-2">
-                    <span className="rounded bg-ink-100 px-2 py-0.5 text-xs dark:bg-ink-800">{b.status}</span>
+                    <select
+                      value={PIPELINE_STATUS_OPTIONS.some((o) => o.value === b.status) ? b.status : 'new'}
+                      onChange={(e) => setStatus(b.source, b.externalId, e.target.value)}
+                      title="Set pipeline status"
+                      className="rounded border border-ink-200 bg-white px-2 py-1 text-xs dark:border-ink-700 dark:bg-ink-900"
+                    >
+                      {PIPELINE_STATUS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   {docAction && (
                     <td className="px-3 py-2">

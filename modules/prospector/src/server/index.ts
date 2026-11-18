@@ -1,7 +1,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { and, desc, eq, gt, gte, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNull, lte, sql, type SQL } from 'drizzle-orm';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
@@ -175,6 +175,65 @@ const MissedJobResolveRequest = z.object({
   status: z.union([z.literal('open'), z.literal('resolved')]).default('resolved'),
 });
 
+/**
+ * The bid pipeline states an operator can set (Phase 2 item 6). These are the
+ * `bid_watcher_seen.status` values: `new` is set by the agent on discovery; the
+ * rest are operator decisions. `submitted` was added for this feature (agent
+ * migration 0004). The CHECK constraint on the table is the source of truth;
+ * this list must stay in sync with it.
+ */
+const PIPELINE_STATUSES = [
+  'new',
+  'pursuing',
+  'submitted',
+  'passing',
+  'won',
+  'lost',
+] as const;
+
+const PipelineStatusRequest = z.object({
+  status: z.enum(PIPELINE_STATUSES),
+});
+
+export interface PipelineSummary {
+  byStatus: Record<string, number>;
+  funnel: {
+    found: number;
+    reviewed: number;
+    pursuing: number;
+    submitted: number;
+    won: number;
+    lost: number;
+  };
+  /** won / (won + lost), rounded to 3 dp; null when nothing is decided yet. */
+  winRate: number | null;
+}
+
+/**
+ * Derive the pipeline funnel + win rate from per-status counts. Pure. `found`
+ * is every bid; `reviewed` is every bid the operator has moved off `new`; win
+ * rate is over decided bids only (won + lost), null when none are decided.
+ */
+export function summarizePipeline(byStatus: Record<string, number>): PipelineSummary {
+  const n = (s: string): number => byStatus[s] ?? 0;
+  const found = Object.values(byStatus).reduce((a, b) => a + b, 0);
+  const won = n('won');
+  const lost = n('lost');
+  const decided = won + lost;
+  return {
+    byStatus,
+    funnel: {
+      found,
+      reviewed: found - n('new'),
+      pursuing: n('pursuing'),
+      submitted: n('submitted'),
+      won,
+      lost,
+    },
+    winRate: decided > 0 ? Number((won / decided).toFixed(3)) : null,
+  };
+}
+
 function buildDb(): ReturnType<typeof drizzle> {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('module-prospector: DATABASE_URL not set');
@@ -185,7 +244,7 @@ function buildDb(): ReturnType<typeof drizzle> {
 export default defineModule({
   manifest: {
     slug: 'prospector',
-    version: '0.0.1',
+    version: '0.0.26',
     displayName: 'Prospector',
     description: 'Surfaces scored bid opportunities. Tracks thumbs feedback for future relevance tuning.',
     settingsSchema: SettingsSchema,
@@ -486,6 +545,73 @@ export default defineModule({
           rating: parsed.data.rating,
         });
         return { ok: true as const };
+      },
+    );
+
+    /**
+     * POST /api/modules/prospector/bids/:source/:externalId/status
+     * Set the bid's pipeline status (pursuing/submitted/passing/won/lost/new) —
+     * Trevor marking where a bid is. This is the ONE place the module writes the
+     * agent-owned `bid_watcher_seen` table: the pipeline is a bid-level fact, so
+     * it lives on the bid (reusing the existing status column + won/lost) rather
+     * than in a parallel module table that would split-brain won/lost.
+     */
+    app.post(
+      '/bids/:source/:externalId/status',
+      { preHandler: requireUser },
+      async (req: FastifyRequest, reply: FastifyReply) => {
+        const userId = req.user!.id;
+        const { source, externalId } = req.params as { source: string; externalId: string };
+        const parsed = PipelineStatusRequest.safeParse(req.body);
+        if (!parsed.success) {
+          reply.code(400).send({ error: 'invalid_input', issues: parsed.error.issues });
+          return;
+        }
+        const updated = await db
+          .update(bidWatcherSeen)
+          .set({ status: parsed.data.status, statusSetAt: new Date(), statusSetBy: userId })
+          .where(and(eq(bidWatcherSeen.source, source), eq(bidWatcherSeen.externalId, externalId)))
+          .returning({ source: bidWatcherSeen.source });
+        if (updated.length === 0) {
+          reply.code(404).send({ error: 'not_found' });
+          return;
+        }
+        await req.audit('prospector.status.set', { source, externalId, status: parsed.data.status });
+        return { ok: true as const, status: parsed.data.status };
+      },
+    );
+
+    /**
+     * GET /api/modules/prospector/pipeline
+     * Funnel + win rate over the bids. Optional filters:
+     *   ?from=ISO ?to=ISO   restrict by first-seen (found) date
+     *   ?location=<substr>  case-insensitive substring match on location
+     * Returns per-status counts, the derived funnel (found → reviewed →
+     * submitted → won/lost) and win rate = won / (won + lost).
+     */
+    app.get(
+      '/pipeline',
+      { preHandler: requireUser },
+      async (req: FastifyRequest) => {
+        const q = req.query as { from?: string; to?: string; location?: string };
+        const clauses: SQL[] = [];
+        const from = q.from ? new Date(q.from) : null;
+        const to = q.to ? new Date(q.to) : null;
+        if (from && !Number.isNaN(from.getTime())) clauses.push(gte(bidWatcherSeen.firstSeenAt, from));
+        if (to && !Number.isNaN(to.getTime())) clauses.push(lte(bidWatcherSeen.firstSeenAt, to));
+        const loc = q.location?.trim();
+        if (loc) clauses.push(sql`${bidWatcherSeen.location} ILIKE ${`%${loc}%`}`);
+        const where = clauses.length > 0 ? and(...clauses) : sql`TRUE`;
+
+        const rows = await db
+          .select({ status: bidWatcherSeen.status, count: sql<number>`count(*)::int` })
+          .from(bidWatcherSeen)
+          .where(where)
+          .groupBy(bidWatcherSeen.status);
+
+        const byStatus: Record<string, number> = {};
+        for (const r of rows) byStatus[r.status] = r.count;
+        return summarizePipeline(byStatus);
       },
     );
 
